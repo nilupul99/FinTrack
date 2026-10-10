@@ -1,0 +1,65 @@
+# ==========================================
+# Xcode
+# ==========================================
+
+# User-specific Xcode settings
+**/xcuserdata/
+*.xcuserstate
+
+# Build products and derived data
+DerivedData/
+build/
+*.ipa
+*.app
+*.dSYM
+*.dSYM.zip
+
+# Xcode temporary files
+*.hmap
+*.xccheckout
+*.moved-aside
+
+# ==========================================
+# Swift Package Manager
+# ==========================================
+
+.build/
+.swiftpm/
+
+# ==========================================
+# CocoaPods (if used in the future)
+# ==========================================
+
+Pods/
+
+# ==========================================
+# macOS
+# ==========================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ==========================================
+# IDE and editor
+# ==========================================
+
+.vscode/
+.idea/
+
+# ==========================================
+# Environment and secrets
+# ==========================================
+
+.env
+.env.*
+!.env.example
+
+# ==========================================
+# Fastlane (if used in the future)
+# ==========================================
+
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
