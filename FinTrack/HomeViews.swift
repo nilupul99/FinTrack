@@ -147,7 +147,7 @@ struct QuickActionsRow: View {
             NavigationLink { RecurringTransactionsScreen() } label: {
                 QuickActionContent(title: "Recurring", systemImage: "repeat.circle.fill")
             }
-            NavigationLink { ReceiptScannerScreen(scanResult: .constant(nil)) } label: {
+            NavigationLink { ReceiptScannerScreen() } label: {
                 QuickActionContent(title: "Receipt", systemImage: "doc.viewfinder")
             }
         }

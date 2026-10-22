@@ -162,12 +162,7 @@ struct AddGoalScreen: View {
             Form {
                 Section("Goal") {
                     TextField("Title", text: $title)
-                    Picker("Category", selection: $category) {
-                        Text("Food").tag("Food")
-                        Text("Transport").tag("Transport")
-                        Text("Bills").tag("Bills")
-                        Text("Salary").tag("Salary")
-                    }
+                    CategoryPicker(category: $category)
                     TextField("Target Amount", text: $target)
                         .keyboardType(.decimalPad)
                 }
@@ -245,12 +240,7 @@ struct EditGoalScreen: View {
         Form {
             Section("Goal") {
                 TextField("Title", text: $title)
-                Picker("Category", selection: $category) {
-                    Text("Food").tag("Food")
-                    Text("Transport").tag("Transport")
-                    Text("Bills").tag("Bills")
-                    Text("Salary").tag("Salary")
-                }
+                CategoryPicker(category: $category)
                 TextField("Target Amount", text: $target)
                     .keyboardType(.decimalPad)
             }

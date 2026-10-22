@@ -1,7 +1,63 @@
 import SwiftUI
 import VisionKit
+import Vision
+import PhotosUI
+import AVFoundation
 import UIKit
 import CoreData
+
+struct CategoryPicker: View {
+    @Binding var category: String
+    @AppStorage("customCategories") private var storedCategories = ""
+    @State private var isAddingCategory = false
+    @State private var newCategory = ""
+
+    private let defaultCategories = ["Food", "Transport", "Bills", "Salary"]
+
+    private var categories: [String] {
+        var values = defaultCategories
+        values.append(contentsOf: storedCategories.split(separator: "|").map(String.init))
+        if values.contains(category) == false, category.isEmpty == false {
+            values.append(category)
+        }
+        return Array(NSOrderedSet(array: values)) as? [String] ?? defaultCategories
+    }
+
+    var body: some View {
+        Picker("Category", selection: $category) {
+            ForEach(categories, id: \.self) { value in
+                Text(value).tag(value)
+            }
+        }
+
+        Button {
+            newCategory = ""
+            isAddingCategory = true
+        } label: {
+            Label("Add Category", systemImage: "plus.circle")
+        }
+        .alert("Add Category", isPresented: $isAddingCategory) {
+            TextField("Category Name", text: $newCategory)
+            Button("Add", action: addCategory)
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Create a category to use in transactions, budgets, and goals.")
+        }
+    }
+
+    private func addCategory() {
+        let trimmedCategory = newCategory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedCategory.isEmpty == false else { return }
+
+        var values = storedCategories.split(separator: "|").map(String.init)
+        if values.contains(where: { $0.caseInsensitiveCompare(trimmedCategory) == .orderedSame }) == false,
+           defaultCategories.contains(where: { $0.caseInsensitiveCompare(trimmedCategory) == .orderedSame }) == false {
+            values.append(trimmedCategory)
+            storedCategories = values.joined(separator: "|")
+        }
+        category = trimmedCategory
+    }
+}
 
 struct TransactionsScreen: View {
     @Environment(\.managedObjectContext) private var viewContext
@@ -9,7 +65,6 @@ struct TransactionsScreen: View {
     @State private var isShowingExpense = false
     @State private var isShowingIncome = false
     @State private var isShowingReceiptScanner = false
-    @State private var receiptScan: ReceiptScanResult?
     @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
 
     init() {
@@ -64,10 +119,7 @@ struct TransactionsScreen: View {
                 AddTransactionScreen(kind: .income)
             }
             .sheet(isPresented: $isShowingReceiptScanner) {
-                ReceiptScannerScreen(scanResult: $receiptScan)
-            }
-            .sheet(item: $receiptScan) { scan in
-                ReceiptConfirmationScreen(scan: scan)
+                ReceiptScannerScreen()
             }
         }
     }
@@ -96,12 +148,7 @@ struct AddTransactionScreen: View {
                     TextField("Title", text: $title)
                     TextField("Amount", text: $amount)
                         .keyboardType(.decimalPad)
-                    Picker("Category", selection: $category) {
-                        Text("Food").tag("Food")
-                        Text("Transport").tag("Transport")
-                        Text("Bills").tag("Bills")
-                        Text("Salary").tag("Salary")
-                    }
+                    CategoryPicker(category: $category)
                     TextField("Notes", text: $notes, axis: .vertical)
                 }
             }
@@ -236,12 +283,7 @@ struct EditTransactionScreen: View {
                 TextField("Title", text: $title)
                 TextField("Amount", text: $amount)
                     .keyboardType(.decimalPad)
-                Picker("Category", selection: $category) {
-                    Text("Food").tag("Food")
-                    Text("Transport").tag("Transport")
-                    Text("Bills").tag("Bills")
-                    Text("Salary").tag("Salary")
-                }
+                CategoryPicker(category: $category)
             }
 
             Section {
@@ -385,14 +427,101 @@ struct AddRecurringTransactionScreen: View {
     }
 }
 
+struct ReceiptTextRecognizer {
+    static func analyze(images: [UIImage]) throws -> ReceiptScanResult {
+        var lines: [String] = []
+        for image in images {
+            lines.append(contentsOf: try recognizedLines(in: image))
+        }
+
+        let recognizedText = lines.joined(separator: "\n")
+        return ReceiptScanResult(
+            merchant: merchant(from: lines),
+            total: total(from: lines),
+            date: .now,
+            itemCount: lines.count,
+            recognizedText: recognizedText
+        )
+    }
+
+    private static func recognizedLines(in image: UIImage) throws -> [String] {
+        guard let cgImage = image.cgImage else { return [] }
+
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try handler.perform([request])
+
+        return (request.results ?? []).compactMap {
+            $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .filter { !$0.isEmpty }
+    }
+
+    private static func merchant(from lines: [String]) -> String {
+        lines.first { line in
+            let lowercased = line.lowercased()
+            return line.rangeOfCharacter(from: .letters) != nil &&
+                !lowercased.contains("total") &&
+                !lowercased.contains("subtotal") &&
+                !lowercased.contains("tax")
+        } ?? "Scanned Receipt"
+    }
+
+    private static func total(from lines: [String]) -> Double {
+        let preferredLines = lines.filter {
+            let lowercased = $0.lowercased()
+            return lowercased.contains("total") ||
+                lowercased.contains("amount due") ||
+                lowercased.contains("balance")
+        }
+
+        let preferredAmounts = preferredLines.flatMap(amounts(in:))
+
+        // A total line can also contain an item count. Its final monetary
+        // value is the bill total, for example: "Items 3  Total LKR 2,450.00".
+        if let preferredTotal = preferredAmounts.last {
+            return preferredTotal
+        }
+
+        return lines
+            .flatMap(amounts(in:))
+            .max() ?? 0
+    }
+
+    private nonisolated static func amounts(in text: String) -> [Double] {
+        let pattern = #"(?<![0-9])([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})?|[0-9]+(?:\.[0-9]{2})?)(?![0-9])"#
+        guard let expression = try? NSRegularExpression(pattern: pattern) else {
+            return []
+        }
+
+        let range = NSRange(text.startIndex..., in: text)
+        return expression.matches(in: text, range: range).compactMap { match in
+            guard let amountRange = Range(match.range(at: 1), in: text) else {
+                return nil
+            }
+
+            return Double(text[amountRange].replacingOccurrences(of: ",", with: ""))
+        }
+    }
+}
+
 struct ReceiptScannerScreen: View {
-    @Environment(\.dismiss) private var dismiss
-    @Binding var scanResult: ReceiptScanResult?
+    @State private var reviewScan: ReceiptScanResult?
     @State private var isShowingScanner = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var isAnalyzing = false
+    @State private var isShowingAnalysisError = false
+    @State private var isShowingCameraAccessAlert = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
+            if let reviewScan {
+                ReceiptConfirmationScreen(scan: reviewScan)
+            } else {
+                VStack(spacing: 24) {
                 Image(systemName: "doc.viewfinder")
                     .font(.system(size: 74))
                     .foregroundStyle(.blue)
@@ -409,27 +538,94 @@ struct ReceiptScannerScreen: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Button { isShowingScanner = true } label: {
-                    Label("Open Camera", systemImage: "camera.viewfinder")
-                        .frame(maxWidth: .infinity)
+                Button(action: openCamera) {
+                    Label(
+                        isAnalyzing ? "Identifying Receipt" : "Open Camera",
+                        systemImage: "camera.viewfinder"
+                    )
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(isAnalyzing)
 
-                Button("Use Sample Receipt") {
-                    scanResult = ReceiptScanResult(merchant: "Market Fresh", total: 42.70, date: Date(), itemCount: 1)
-                    dismiss()
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label("Choose from Gallery", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
                 }
-                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isAnalyzing)
+
+                if isAnalyzing {
+                    ProgressView("Reading receipt values with Vision")
+                }
             }
             .padding(24)
             .navigationTitle("Scan Receipt")
             .sheet(isPresented: $isShowingScanner) {
-                DocumentCameraView { pages in
-                    scanResult = ReceiptScanResult(merchant: "Scanned Receipt", total: 0, date: Date(), itemCount: pages)
-                    dismiss()
+                DocumentCameraView { images in
+                    Task {
+                        await processReceiptImages(images)
+                    }
                 }
             }
+            .onChange(of: selectedPhoto) { _, newPhoto in
+                guard let newPhoto else { return }
+
+                Task {
+                    guard let data = try? await newPhoto.loadTransferable(type: Data.self),
+                          let image = UIImage(data: data) else {
+                        isShowingAnalysisError = true
+                        return
+                    }
+                    await processReceiptImages([image])
+                    selectedPhoto = nil
+                }
+            }
+            .alert("Could Not Read Receipt", isPresented: $isShowingAnalysisError) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Try scanning the receipt again in better lighting.")
+            }
+            .alert("Camera Access Needed", isPresented: $isShowingCameraAccessAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Allow camera access in Settings to scan a receipt, or select a receipt image from your gallery.")
+            }
+            }
+        }
+    }
+
+    private func openCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            isShowingScanner = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Task { @MainActor in
+                    if granted {
+                        isShowingScanner = true
+                    } else {
+                        isShowingCameraAccessAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            isShowingCameraAccessAlert = true
+        @unknown default:
+            isShowingCameraAccessAlert = true
+        }
+    }
+
+    private func processReceiptImages(_ images: [UIImage]) async {
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+
+        do {
+            reviewScan = try ReceiptTextRecognizer.analyze(images: images)
+        } catch {
+            isShowingAnalysisError = true
         }
     }
 }
@@ -437,8 +633,12 @@ struct ReceiptScannerScreen: View {
 struct ReceiptConfirmationScreen: View {
     let scan: ReceiptScanResult
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @State private var merchant: String
     @State private var total: String
+    @State private var category = "Food"
+    @State private var isShowingValidationAlert = false
 
     init(scan: ReceiptScanResult) {
         self.scan = scan
@@ -447,28 +647,86 @@ struct ReceiptConfirmationScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Receipt Confirmation") {
-                    TextField("Merchant", text: $merchant)
+        Form {
+            Section("Review Transaction") {
+                Text("The detected total will be saved as an expense. You can edit any field before saving.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                TextField("Merchant", text: $merchant)
                     TextField("Total", text: $total)
                         .keyboardType(.decimalPad)
+                    CategoryPicker(category: $category)
                     Text(scan.date, format: .dateTime.month().day().year())
-                    Text("Pages scanned: \(scan.itemCount)")
+                    Text("\(scan.itemCount) text lines identified by Vision")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if scan.recognizedText.isEmpty == false {
+                    Section("Recognized Receipt Text") {
+                        Text(scan.recognizedText)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                    }
                 }
             }
-            .navigationTitle("Confirm Receipt")
+            .navigationTitle("Review Receipt")
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { dismiss() }
+                    Button("Save Expense", action: saveTransaction)
                 }
             }
+            .alert("Enter a merchant and valid total.", isPresented: $isShowingValidationAlert) {
+                Button("OK", role: .cancel) { }
+            }
+    }
+
+    private func saveTransaction() {
+        let trimmedMerchant = merchant.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedMerchant.isEmpty == false,
+              let enteredTotal = Double(total),
+              enteredTotal > 0,
+              activeUserEmail.isEmpty == false else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        let transaction = NSEntityDescription.insertNewObject(
+            forEntityName: "Transaction",
+            into: viewContext
+        )
+        transaction.setValue(trimmedMerchant, forKey: "title")
+        transaction.setValue(category, forKey: "category")
+        transaction.setValue(-enteredTotal, forKey: "amount")
+        transaction.setValue(scan.date, forKey: "createdAt")
+        transaction.setValue(activeUserEmail, forKey: "userEmail")
+
+        do {
+            let newlyAchievedGoals = markNewlyAchievedGoals(
+                in: viewContext,
+                userEmail: activeUserEmail
+            )
+            try viewContext.save()
+
+            Task {
+                for goalTitle in newlyAchievedGoals {
+                    await NotificationManager.shared.scheduleNotification(
+                        title: "Goal achieved",
+                        body: "You achieved your \(goalTitle) goal.",
+                        secondsFromNow: 1
+                    )
+                }
+            }
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
         }
     }
 }
 
 struct DocumentCameraView: UIViewControllerRepresentable {
-    let onComplete: (Int) -> Void
+    let onComplete: ([UIImage]) -> Void
     @Environment(\.dismiss) private var dismiss
 
     func makeCoordinator() -> Coordinator {
@@ -484,16 +742,17 @@ struct DocumentCameraView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) { }
 
     final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
-        let onComplete: (Int) -> Void
+        let onComplete: ([UIImage]) -> Void
         let dismiss: DismissAction
 
-        init(onComplete: @escaping (Int) -> Void, dismiss: DismissAction) {
+        init(onComplete: @escaping ([UIImage]) -> Void, dismiss: DismissAction) {
             self.onComplete = onComplete
             self.dismiss = dismiss
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
-            onComplete(scan.pageCount)
+            let images = (0..<scan.pageCount).map { scan.imageOfPage(at: $0) }
+            onComplete(images)
             dismiss()
         }
 

@@ -155,12 +155,7 @@ struct CreateBudgetScreen: View {
         NavigationStack {
             Form {
                 Section("Category Budget") {
-                    Picker("Category", selection: $category) {
-                        Text("Food").tag("Food")
-                        Text("Transport").tag("Transport")
-                        Text("Bills").tag("Bills")
-                        Text("Salary").tag("Salary")
-                    }
+                    CategoryPicker(category: $category)
                     TextField("Budget Amount", text: $amount)
                         .keyboardType(.decimalPad)
                 }
@@ -234,12 +229,7 @@ struct EditBudgetScreen: View {
     var body: some View {
         Form {
             Section("Category Budget") {
-                Picker("Category", selection: $category) {
-                    Text("Food").tag("Food")
-                    Text("Transport").tag("Transport")
-                    Text("Bills").tag("Bills")
-                    Text("Salary").tag("Salary")
-                }
+                CategoryPicker(category: $category)
                 TextField("Budget Amount", text: $amount)
                     .keyboardType(.decimalPad)
             }

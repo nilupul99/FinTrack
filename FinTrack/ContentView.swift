@@ -13,6 +13,7 @@ struct ContentView: View {
     @State private var authRoute: AuthRoute = .welcome
     @State private var isAuthenticated = false
     @State private var currentUserName = ""
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
 
     var body: some View {
         Group {
@@ -34,6 +35,12 @@ struct ContentView: View {
         .tint(.blue)
         .task {
             await NotificationManager.shared.requestAuthorization()
+
+            if let user = await SupabaseAuthService.shared.restoreSession() {
+                currentUserName = user.displayName
+                activeUserEmail = user.email
+                isAuthenticated = true
+            }
         }
     }
 }

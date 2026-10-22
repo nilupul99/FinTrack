@@ -23,6 +23,7 @@ struct ProfileScreen: View {
                         isAuthenticated = false
                         authRoute = .login
                         Task {
+                            await SupabaseAuthService.shared.signOut()
                             await NotificationManager.shared.scheduleSignOutNotification()
                         }
                     } label: {

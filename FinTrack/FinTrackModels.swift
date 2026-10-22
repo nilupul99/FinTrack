@@ -98,6 +98,21 @@ struct ReceiptScanResult: Identifiable {
     let total: Double
     let date: Date
     let itemCount: Int
+    let recognizedText: String
+
+    init(
+        merchant: String,
+        total: Double,
+        date: Date,
+        itemCount: Int,
+        recognizedText: String = ""
+    ) {
+        self.merchant = merchant
+        self.total = total
+        self.date = date
+        self.itemCount = itemCount
+        self.recognizedText = recognizedText
+    }
 }
 
 struct FinancialInsight: Identifiable {

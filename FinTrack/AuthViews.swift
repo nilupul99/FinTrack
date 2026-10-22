@@ -123,7 +123,7 @@ struct LoginScreen: View {
 
                         AuthSecureField(title: "Password", text: $password)
 
-                        Button { authenticateUser() } label: {
+                        Button { Task { await authenticateUser() } } label: {
                             Label("Log In", systemImage: "arrow.right.circle.fill")
                                 .frame(maxWidth: .infinity)
                         }
@@ -165,7 +165,7 @@ struct LoginScreen: View {
         }
     }
 
-    private func authenticateUser() {
+    private func authenticateUser() async {
         let normalizedEmail = email.normalizedEmail
 
         guard normalizedEmail.isEmpty == false, password.isEmpty == false else {
@@ -173,24 +173,20 @@ struct LoginScreen: View {
             return
         }
 
-        let request = NSFetchRequest<NSManagedObject>(entityName: "UserAccount")
-        request.fetchLimit = 1
-        request.predicate = NSPredicate(format: "email ==[c] %@ AND password == %@", normalizedEmail, password)
-
         do {
-            if let account = try viewContext.fetch(request).first {
-                completeSignIn(account: account, method: "password")
-            } else {
-                showAlert("No account matches those login details.")
-            }
+            let user = try await SupabaseAuthService.shared.signIn(
+                email: normalizedEmail,
+                password: password
+            )
+            completeSignIn(name: user.displayName, email: user.email, method: "password")
         } catch {
-            showAlert("Could not check your account. Please try again.")
+            showAlert(error.localizedDescription)
         }
     }
 
-    private func completeSignIn(account: NSManagedObject, method: String) {
-        currentUserName = account.value(forKey: "name") as? String ?? ""
-        activeUserEmail = account.value(forKey: "email") as? String ?? ""
+    private func completeSignIn(name: String, email: String, method: String) {
+        currentUserName = name
+        activeUserEmail = email
         isAuthenticated = true
         Task {
             let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
@@ -236,7 +232,7 @@ struct SignUpScreen: View {
                             .keyboardType(.emailAddress)
                         AuthSecureField(title: "Password", text: $password)
 
-                        Button { createAccount() } label: {
+                        Button { Task { await createAccount() } } label: {
                             Label("Create Account", systemImage: "checkmark.circle.fill")
                                 .frame(maxWidth: .infinity)
                         }
@@ -273,7 +269,7 @@ struct SignUpScreen: View {
         }
     }
 
-    private func createAccount() {
+    private func createAccount() async {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedEmail = email.normalizedEmail
 
@@ -282,42 +278,30 @@ struct SignUpScreen: View {
             return
         }
 
-        guard isExistingAccount(email: normalizedEmail) == false else {
-            showAlert(title: "Account Exists", message: "Use the login screen for this email address.")
-            return
-        }
-
-        let account = NSEntityDescription.insertNewObject(forEntityName: "UserAccount", into: viewContext)
-        account.setValue(trimmedName, forKey: "name")
-        account.setValue(normalizedEmail, forKey: "email")
-        account.setValue(password, forKey: "password")
-        account.setValue(Date(), forKey: "createdAt")
-
         do {
-            try viewContext.save()
-            currentUserName = trimmedName
-            activeUserEmail = normalizedEmail
-            isAuthenticated = true
-            Task {
-                await NotificationManager.shared.scheduleSignInNotification(
-                    body: "Your account is ready. Start by adding your first transaction."
+            let result = try await SupabaseAuthService.shared.signUp(
+                name: trimmedName,
+                email: normalizedEmail,
+                password: password
+            )
+
+            guard result.isSignedIn else {
+                showAlert(
+                    title: "Confirm Your Email",
+                    message: "Your Supabase account was created. Confirm your email, then log in."
                 )
+                authRoute = .login
+                return
             }
-        } catch {
-            viewContext.rollback()
-            showAlert(title: "Sign Up Failed", message: "Could not save your account. Please try again.")
-        }
-    }
 
-    private func isExistingAccount(email: String) -> Bool {
-        let request = NSFetchRequest<NSManagedObject>(entityName: "UserAccount")
-        request.fetchLimit = 1
-        request.predicate = NSPredicate(format: "email ==[c] %@", email)
-
-        do {
-            return try viewContext.fetch(request).isEmpty == false
+            currentUserName = result.user.displayName
+            activeUserEmail = result.user.email
+            isAuthenticated = true
+            await NotificationManager.shared.scheduleSignInNotification(
+                body: "Your account is ready. Start by adding your first transaction."
+            )
         } catch {
-            return false
+            showAlert(title: "Sign Up Failed", message: error.localizedDescription)
         }
     }
 
@@ -333,6 +317,7 @@ struct FaceIDScreen: View {
     @Binding var isAuthenticated: Bool
     @Binding var currentUserName: String
     let viewContext: NSManagedObjectContext
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @State private var statusMessage = "Use Face ID or your device passcode to unlock FinTrack."
     @State private var isAuthenticating = false
 
@@ -383,13 +368,7 @@ struct FaceIDScreen: View {
 
     private func authenticateWithFaceID() {
         isAuthenticating = true
-        statusMessage = "Looking for saved account..."
-
-        guard let account = latestAccount() else {
-            isAuthenticating = false
-            statusMessage = "Create an account or log in once before using Face ID."
-            return
-        }
+        statusMessage = "Checking your saved session..."
 
         let context = LAContext()
         context.localizedCancelTitle = "Cancel"
@@ -404,25 +383,27 @@ struct FaceIDScreen: View {
 
         context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock your FinTrack finance dashboard.") { success, authenticationError in
             Task { @MainActor in
-                isAuthenticating = false
-                if success {
-                    currentUserName = account.value(forKey: "name") as? String ?? ""
-                    isAuthenticated = true
-                    let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
-                    await NotificationManager.shared.scheduleSignInNotification(
-                        body: "You signed in with Face ID at \(signInTime)."
-                    )
-                } else {
+                guard success else {
+                    isAuthenticating = false
                     statusMessage = authenticationError?.localizedDescription ?? "Authentication failed. Try again."
+                    return
                 }
+
+                guard let user = await SupabaseAuthService.shared.restoreSession() else {
+                    isAuthenticating = false
+                    statusMessage = "Log in with your password once before using Face ID."
+                    return
+                }
+
+                currentUserName = user.displayName
+                activeUserEmail = user.email
+                isAuthenticated = true
+                isAuthenticating = false
+                let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
+                await NotificationManager.shared.scheduleSignInNotification(
+                    body: "You signed in with Face ID at \(signInTime)."
+                )
             }
         }
-    }
-
-    private func latestAccount() -> NSManagedObject? {
-        let request = NSFetchRequest<NSManagedObject>(entityName: "UserAccount")
-        request.fetchLimit = 1
-        request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
-        return try? viewContext.fetch(request).first
     }
 }
