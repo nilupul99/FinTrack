@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CurrencyText: View {
     let amount: Double
-    @AppStorage("currencyCode") private var currencyCode = "USD"
+    @AppStorage("currencyCode") private var currencyCode = "LKR"
 
     var body: some View {
         Text(amount, format: .currency(code: currencyCode))

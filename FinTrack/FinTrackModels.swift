@@ -1,4 +1,11 @@
 import SwiftUI
+import CoreData
+
+func makeTransactionFetchRequest() -> NSFetchRequest<NSManagedObject> {
+    let request = NSFetchRequest<NSManagedObject>(entityName: "Transaction")
+    request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+    return request
+}
 
 struct TransactionRowData: Identifiable, Equatable {
     let id = UUID()
@@ -7,6 +14,36 @@ struct TransactionRowData: Identifiable, Equatable {
     let amount: Double
     let symbolName: String
     let tint: Color
+}
+
+extension TransactionRowData {
+    init(managedObject: NSManagedObject) {
+        let amount = managedObject.value(forKey: "amount") as? Double ?? 0
+        let category = managedObject.value(forKey: "category") as? String ?? "Other"
+
+        self.init(
+            merchant: managedObject.value(forKey: "title") as? String ?? "Transaction",
+            category: category,
+            amount: amount,
+            symbolName: Self.symbolName(for: category),
+            tint: amount >= 0 ? .green : .orange
+        )
+    }
+
+    private static func symbolName(for category: String) -> String {
+        switch category {
+        case "Food":
+            "fork.knife"
+        case "Transport":
+            "car.fill"
+        case "Bills":
+            "bolt.fill"
+        case "Salary":
+            "banknote.fill"
+        default:
+            "tag.fill"
+        }
+    }
 }
 
 struct ReceiptScanResult: Identifiable {

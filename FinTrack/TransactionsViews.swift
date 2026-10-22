@@ -1,12 +1,24 @@
 import SwiftUI
 import VisionKit
 import UIKit
+import CoreData
 
 struct TransactionsScreen: View {
+    @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @State private var isShowingExpense = false
     @State private var isShowingIncome = false
     @State private var isShowingReceiptScanner = false
     @State private var receiptScan: ReceiptScanResult?
+    @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
+
+    init() {
+        _savedTransactions = FetchRequest(fetchRequest: makeTransactionFetchRequest(), animation: .default)
+    }
+
+    private var transactions: [NSManagedObject] {
+        savedTransactions.filter { $0.value(forKey: "userEmail") as? String == activeUserEmail }
+    }
 
     var body: some View {
         NavigationStack {
@@ -24,8 +36,16 @@ struct TransactionsScreen: View {
                 }
 
                 Section("Recent") {
-                    ForEach(SampleData.transactions) { transaction in
-                        TransactionRow(transaction: transaction)
+                    if transactions.isEmpty {
+                        ContentUnavailableView(
+                            "No Transactions",
+                            systemImage: "tray",
+                            description: Text("Add an income or expense to start tracking your finances.")
+                        )
+                    } else {
+                        ForEach(transactions, id: \.objectID) { transaction in
+                            TransactionRow(transaction: TransactionRowData(managedObject: transaction))
+                        }
                     }
                 }
             }
@@ -54,10 +74,13 @@ struct AddTransactionScreen: View {
 
     let kind: TransactionKind
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @State private var title = ""
     @State private var amount = ""
     @State private var category = "Food"
     @State private var notes = ""
+    @State private var isShowingValidationAlert = false
 
     var body: some View {
         NavigationStack {
@@ -77,22 +100,51 @@ struct AddTransactionScreen: View {
             }
             .navigationTitle("Add \(kind.rawValue)")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
+//                ToolbarItem(placement: .cancellationAction) {
+//                    Button("Cancel") { dismiss() }
+//                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            await NotificationManager.shared.scheduleNotification(
-                                title: "Transaction added",
-                                body: "Your \(kind.rawValue.lowercased()) was added to FinTrack.",
-                                secondsFromNow: 1
-                            )
-                        }
-                        dismiss()
-                    }
+                    Button("Save", action: saveTransaction)
                 }
             }
+            .alert("Enter a title and a valid amount.", isPresented: $isShowingValidationAlert) {
+                Button("OK", role: .cancel) { }
+            }
+        }
+    }
+
+    private func saveTransaction() {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            trimmedTitle.isEmpty == false,
+            let enteredAmount = Double(amount),
+            enteredAmount > 0,
+            activeUserEmail.isEmpty == false
+        else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        let transaction = NSEntityDescription.insertNewObject(forEntityName: "Transaction", into: viewContext)
+        transaction.setValue(trimmedTitle, forKey: "title")
+        transaction.setValue(category, forKey: "category")
+        transaction.setValue(kind == .expense ? -enteredAmount : enteredAmount, forKey: "amount")
+        transaction.setValue(Date(), forKey: "createdAt")
+        transaction.setValue(activeUserEmail, forKey: "userEmail")
+
+        do {
+            try viewContext.save()
+            Task {
+                await NotificationManager.shared.scheduleNotification(
+                    title: "Transaction added",
+                    body: "Your \(kind.rawValue.lowercased()) was added to FinTrack.",
+                    secondsFromNow: 1
+                )
+            }
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
         }
     }
 }
@@ -102,11 +154,11 @@ struct RecurringTransactionsScreen: View {
 
     var body: some View {
         List {
-            Section("Upcoming") {
-                RecurringRow(title: "Netflix", cadence: "Monthly", amount: -15.99, icon: "play.tv.fill", tint: .red)
-                RecurringRow(title: "Rent", cadence: "Monthly", amount: -1200, icon: "house.fill", tint: .blue)
-                RecurringRow(title: "Salary", cadence: "Monthly", amount: 2850, icon: "banknote.fill", tint: .green)
-            }
+            ContentUnavailableView(
+                "No Recurring Transactions",
+                systemImage: "repeat",
+                description: Text("Add a recurring transaction to see it here.")
+            )
         }
         .navigationTitle("Recurring")
         .toolbar {
@@ -147,9 +199,9 @@ struct AddRecurringTransactionScreen: View {
             }
             .navigationTitle("Add Recurring")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
+//                ToolbarItem(placement: .cancellationAction) {
+//                    Button("Cancel") { dismiss() }
+//                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {

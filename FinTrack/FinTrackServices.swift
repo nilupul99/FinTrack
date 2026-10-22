@@ -36,7 +36,7 @@ struct InsightsService {
 
     func fetchInsights() async -> [FinancialInsight] {
         guard let url = URL(string: apiURLString), apiURLString.isEmpty == false else {
-            return FinancialInsight.sample
+            return []
         }
 
         do {
@@ -51,7 +51,7 @@ struct InsightsService {
                 )
             }
         } catch {
-            return FinancialInsight.sample
+            return []
         }
     }
 }

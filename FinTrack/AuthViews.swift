@@ -104,6 +104,7 @@ struct LoginScreen: View {
     @State private var password = ""
     @State private var alertMessage = ""
     @State private var isShowingAlert = false
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
 
     var body: some View {
         NavigationStack {
@@ -189,6 +190,7 @@ struct LoginScreen: View {
 
     private func completeSignIn(account: NSManagedObject, method: String) {
         currentUserName = account.value(forKey: "name") as? String ?? ""
+        activeUserEmail = account.value(forKey: "email") as? String ?? ""
         isAuthenticated = true
         Task {
             await NotificationManager.shared.scheduleNotification(
@@ -215,6 +217,7 @@ struct SignUpScreen: View {
     @State private var password = ""
     @State private var alertTitle = ""
     @State private var alertMessage = ""
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @State private var isShowingAlert = false
 
     var body: some View {
@@ -294,6 +297,7 @@ struct SignUpScreen: View {
         do {
             try viewContext.save()
             currentUserName = trimmedName
+            activeUserEmail = normalizedEmail
             isAuthenticated = true
             Task {
                 await NotificationManager.shared.scheduleNotification(

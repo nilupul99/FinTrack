@@ -1,18 +1,37 @@
 import SwiftUI
+import CoreData
 
+@MainActor
 struct HomeScreen: View {
     let userName: String
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
+    init(userName: String) {
+        self.userName = userName
+        _savedTransactions = FetchRequest(fetchRequest: makeTransactionFetchRequest(), animation: .default)
+    }
+
+    private var transactions: [NSManagedObject] {
+        savedTransactions.filter { $0.value(forKey: "userEmail") as? String == activeUserEmail }
+    }
+
+    private var income: Double {
+        transactions.reduce(0) { $0 + max($1.value(forKey: "amount") as? Double ?? 0, 0) }
+    }
+
+    private var spent: Double {
+        transactions.reduce(0) { $0 + min($1.value(forKey: "amount") as? Double ?? 0, 0) * -1 }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     HomeHeader(userName: userName)
-                    BalanceCard()
+                    BalanceCard(balance: income - spent, income: income, spent: spent)
                     QuickActionsRow()
-                    BudgetProgressCard()
-                    RecurringSummaryCard()
-                    RecentTransactionsSection(transactions: SampleData.transactions)
+                    SpendingSummaryCard(spent: spent)
+                    RecentTransactionsSection(transactions: transactions.map(TransactionRowData.init(managedObject:)))
                 }
                 .padding(20)
             }
@@ -49,6 +68,10 @@ struct HomeHeader: View {
 }
 
 struct BalanceCard: View {
+    let balance: Double
+    let income: Double
+    let spent: Double
+
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .top) {
@@ -56,7 +79,7 @@ struct BalanceCard: View {
                     Text("Total Balance")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white.opacity(0.78))
-                    CurrencyText(amount: 12460.75)
+                    CurrencyText(amount: balance)
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -69,8 +92,8 @@ struct BalanceCard: View {
             }
 
             HStack(spacing: 14) {
-                BalanceMetric(title: "Income", amount: 4280, systemImage: "arrow.down.left.circle.fill", tint: .green)
-                BalanceMetric(title: "Spent", amount: 1840, systemImage: "arrow.up.right.circle.fill", tint: .orange)
+                BalanceMetric(title: "Income", amount: income, systemImage: "arrow.down.left.circle.fill", tint: .green)
+                BalanceMetric(title: "Spent", amount: spent, systemImage: "arrow.up.right.circle.fill", tint: .orange)
             }
         }
         .padding(22)
@@ -151,77 +174,23 @@ struct QuickActionContent: View {
     }
 }
 
-struct BudgetProgressCard: View {
+struct SpendingSummaryCard: View {
+    let spent: Double
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Monthly Budget")
-                        .font(.headline)
-                    HStack(spacing: 3) {
-                        CurrencyText(amount: 1840)
-                        Text("of")
-                        CurrencyText(amount: 2500)
-                        Text("spent")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Text("74%")
-                    .font(.headline)
-                    .foregroundStyle(.blue)
-            }
-
-            ProgressView(value: 0.74)
-                .tint(.blue)
-                .scaleEffect(x: 1, y: 1.6, anchor: .center)
-
-            HStack {
-                Label("On track", systemImage: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                Spacer()
-                CurrencyText(amount: 660)
-                    .foregroundStyle(.secondary)
-            }
-            .font(.subheadline.weight(.medium))
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Expenses")
+                .font(.headline)
+            CurrencyText(amount: spent)
+                .font(.title2.bold())
+            Text(spent == 0 ? "Add an expense to begin tracking." : "Based on your saved transactions.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-}
-
-struct RecurringSummaryCard: View {
-    var body: some View {
-        NavigationLink {
-            RecurringTransactionsScreen()
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "repeat.circle.fill")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
-                    .frame(width: 48, height: 48)
-                    .background(Color.blue.opacity(0.12))
-                    .clipShape(Circle())
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Recurring Transactions")
-                        .font(.headline)
-                    Text("3 upcoming this month")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(18)
-            .background(.background)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -238,19 +207,30 @@ struct RecentTransactionsSection: View {
                     .font(.subheadline.weight(.semibold))
             }
 
-            VStack(spacing: 0) {
-                ForEach(transactions) { transaction in
-                    TransactionRow(transaction: transaction)
+            if transactions.isEmpty {
+                ContentUnavailableView(
+                    "No Transactions Yet",
+                    systemImage: "tray",
+                    description: Text("Your activity will appear here after you add a transaction.")
+                )
+                .padding()
+                .background(.background)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(transactions) { transaction in
+                        TransactionRow(transaction: transaction)
 
-                    if transaction.id != transactions.last?.id {
-                        Divider()
-                            .padding(.leading, 58)
+                        if transaction.id != transactions.last?.id {
+                            Divider()
+                                .padding(.leading, 58)
+                        }
                     }
                 }
+                .padding(.horizontal, 14)
+                .background(.background)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
-            .padding(.horizontal, 14)
-            .background(.background)
-            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
     }
 }

@@ -1,27 +1,61 @@
 import SwiftUI
+import CoreData
 
 struct AnalyticsScreen: View {
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("insightsAPIURL") private var insightsAPIURL = ""
     @State private var insights: [FinancialInsight] = []
     @State private var isLoading = false
-    @AppStorage("insightsAPIURL") private var insightsAPIURL = ""
+    @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
+
+    init() {
+        _savedTransactions = FetchRequest(fetchRequest: makeTransactionFetchRequest(), animation: .default)
+    }
+
+    private var transactions: [NSManagedObject] {
+        savedTransactions.filter { $0.value(forKey: "userEmail") as? String == activeUserEmail }
+    }
+
+    private var income: Double {
+        transactions.reduce(0) { $0 + max($1.value(forKey: "amount") as? Double ?? 0, 0) }
+    }
+
+    private var expenses: Double {
+        transactions.reduce(0) { $0 + min($1.value(forKey: "amount") as? Double ?? 0, 0) * -1 }
+    }
+
+    private var topSpendCategory: String {
+        let expenses = transactions.filter { ($0.value(forKey: "amount") as? Double ?? 0) < 0 }
+        return Dictionary(grouping: expenses) { $0.value(forKey: "category") as? String ?? "Other" }
+            .max { $0.value.count < $1.value.count }?
+            .key ?? "—"
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    AnalyticsSummaryGrid()
+                    AnalyticsSummaryGrid(
+                        cashFlow: income - expenses,
+                        topSpend: topSpendCategory,
+                        savingsRate: income == 0 ? 0 : (income - expenses) / income
+                    )
 
-                    Button { loadInsights() } label: {
-                        Label("Refresh API Insights", systemImage: "arrow.clockwise")
-                            .frame(maxWidth: .infinity)
+                    if insightsAPIURL.isEmpty == false {
+                        Button { loadInsights() } label: {
+                            Label("Refresh API Insights", systemImage: "arrow.clockwise")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .disabled(isLoading)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(isLoading)
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(insights) { insight in
-                            InsightCard(insight: insight)
+                    if insights.isEmpty == false {
+                        VStack(alignment: .leading, spacing: 12) {
+                            ForEach(insights) { insight in
+                                InsightCard(insight: insight)
+                            }
                         }
                     }
                 }
@@ -29,11 +63,6 @@ struct AnalyticsScreen: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Analytics")
-            .task {
-                if insights.isEmpty {
-                    loadInsights()
-                }
-            }
         }
     }
 
@@ -51,15 +80,19 @@ struct AnalyticsScreen: View {
 }
 
 struct AnalyticsSummaryGrid: View {
+    let cashFlow: Double
+    let topSpend: String
+    let savingsRate: Double
+
     var body: some View {
         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
             GridRow {
-                AnalyticsMetricCard(title: "Cash Flow", value: "+2.4K", icon: "waveform.path.ecg", tint: .green)
-                AnalyticsMetricCard(title: "Top Spend", value: "Food", icon: "fork.knife", tint: .orange)
+                AnalyticsMetricCard(title: "Cash Flow", amount: cashFlow, icon: "waveform.path.ecg", tint: cashFlow >= 0 ? .green : .orange)
+                AnalyticsMetricCard(title: "Top Spend", value: topSpend, icon: "fork.knife", tint: .orange)
             }
             GridRow {
-                AnalyticsMetricCard(title: "Savings", value: "18%", icon: "arrow.up.forward", tint: .blue)
-                AnalyticsMetricCard(title: "Risk", value: "Low", icon: "shield.fill", tint: .purple)
+                AnalyticsMetricCard(title: "Savings", value: savingsRate.formatted(.percent.precision(.fractionLength(0))), icon: "arrow.up.forward", tint: .blue)
+                AnalyticsMetricCard(title: "Transactions", value: "Live", icon: "chart.bar.fill", tint: .purple)
             }
         }
     }
@@ -70,6 +103,17 @@ struct AnalyticsMetricCard: View {
     let value: String
     let icon: String
     let tint: Color
+
+    init(title: LocalizedStringKey, value: String, icon: String, tint: Color) {
+        self.title = title
+        self.value = value
+        self.icon = icon
+        self.tint = tint
+    }
+
+    init(title: LocalizedStringKey, amount: Double, icon: String, tint: Color) {
+        self.init(title: title, value: amount.formatted(.number.precision(.fractionLength(2))), icon: icon, tint: tint)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {

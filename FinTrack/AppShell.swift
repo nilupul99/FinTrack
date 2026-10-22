@@ -28,6 +28,11 @@ struct AppShell: View {
                 authRoute: $authRoute
             )
             .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
+
+            NavigationStack {
+                SettingsScreen()
+            }
+            .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
     }
 }
