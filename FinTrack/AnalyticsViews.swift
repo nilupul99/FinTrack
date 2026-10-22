@@ -3,13 +3,14 @@ import CoreData
 
 struct AnalyticsScreen: View {
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
-    @AppStorage("insightsAPIURL") private var insightsAPIURL = ""
-    @State private var insights: [FinancialInsight] = []
-    @State private var isLoading = false
+    @AppStorage("currencyCode") private var currencyCode = "LKR"
     @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
 
     init() {
-        _savedTransactions = FetchRequest(fetchRequest: makeTransactionFetchRequest(), animation: .default)
+        _savedTransactions = FetchRequest(
+            fetchRequest: makeTransactionFetchRequest(),
+            animation: .default
+        )
     }
 
     private var transactions: [NSManagedObject] {
@@ -24,11 +25,41 @@ struct AnalyticsScreen: View {
         transactions.reduce(0) { $0 + min($1.value(forKey: "amount") as? Double ?? 0, 0) * -1 }
     }
 
+    private var categoryExpenses: [(name: String, amount: Double)] {
+        let grouped = Dictionary(grouping: transactions.filter {
+            ($0.value(forKey: "amount") as? Double ?? 0) < 0
+        }) {
+            $0.value(forKey: "category") as? String ?? "Other"
+        }
+
+        return grouped.map { category, transactions in
+            (
+                name: category,
+                amount: transactions.reduce(0) {
+                    $0 + abs($1.value(forKey: "amount") as? Double ?? 0)
+                }
+            )
+        }
+        .sorted { $0.amount > $1.amount }
+    }
+
     private var topSpendCategory: String {
-        let expenses = transactions.filter { ($0.value(forKey: "amount") as? Double ?? 0) < 0 }
-        return Dictionary(grouping: expenses) { $0.value(forKey: "category") as? String ?? "Other" }
-            .max { $0.value.count < $1.value.count }?
-            .key ?? "—"
+        categoryExpenses.first?.name ?? "—"
+    }
+
+    private var topCategoryExpense: Double {
+        categoryExpenses.first?.amount ?? 0
+    }
+
+    private var insights: [FinancialInsight] {
+        CoreMLInsightsService().makeInsights(
+            income: income,
+            expenses: expenses,
+            topSpendCategory: topSpendCategory,
+            topCategoryExpense: topCategoryExpense,
+            transactionCount: transactions.count,
+            currencyCode: currencyCode
+        )
     }
 
     var body: some View {
@@ -38,43 +69,28 @@ struct AnalyticsScreen: View {
                     AnalyticsSummaryGrid(
                         cashFlow: income - expenses,
                         topSpend: topSpendCategory,
-                        savingsRate: income == 0 ? 0 : (income - expenses) / income
+                        savingsRate: income == 0 ? 0 : (income - expenses) / income,
+                        transactionCount: transactions.count
                     )
 
-                    if insightsAPIURL.isEmpty == false {
-                        Button { loadInsights() } label: {
-                            Label("Refresh API Insights", systemImage: "arrow.clockwise")
-                                .frame(maxWidth: .infinity)
+                    Label("On-device Core ML insights", systemImage: "brain.head.profile")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(insights) { insight in
+                            InsightCard(insight: insight)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(isLoading)
                     }
 
-                    if insights.isEmpty == false {
-                        VStack(alignment: .leading, spacing: 12) {
-                            ForEach(insights) { insight in
-                                InsightCard(insight: insight)
-                            }
-                        }
-                    }
+                    Text("The included models use synthetic demonstration data. Replace them with consented real-world training data before release.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(20)
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Analytics")
-        }
-    }
-
-    private func loadInsights() {
-        isLoading = true
-        Task {
-            let service = InsightsService(apiURLString: insightsAPIURL)
-            let result = await service.fetchInsights()
-            await MainActor.run {
-                insights = result
-                isLoading = false
-            }
         }
     }
 }
@@ -83,6 +99,7 @@ struct AnalyticsSummaryGrid: View {
     let cashFlow: Double
     let topSpend: String
     let savingsRate: Double
+    let transactionCount: Int
 
     var body: some View {
         Grid(horizontalSpacing: 12, verticalSpacing: 12) {
@@ -92,7 +109,7 @@ struct AnalyticsSummaryGrid: View {
             }
             GridRow {
                 AnalyticsMetricCard(title: "Savings", value: savingsRate.formatted(.percent.precision(.fractionLength(0))), icon: "arrow.up.forward", tint: .blue)
-                AnalyticsMetricCard(title: "Transactions", value: "Live", icon: "chart.bar.fill", tint: .purple)
+                AnalyticsMetricCard(title: "Transactions", value: String(transactionCount), icon: "chart.bar.fill", tint: .purple)
             }
         }
     }

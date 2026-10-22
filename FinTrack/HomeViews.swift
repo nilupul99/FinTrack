@@ -57,12 +57,16 @@ struct HomeHeader: View {
 
             Spacer()
 
-            Image(systemName: "person.crop.circle")
-                .font(.title2)
-                .symbolRenderingMode(.hierarchical)
-                .frame(width: 44, height: 44)
-                .background(.background)
-                .clipShape(Circle())
+            NavigationLink {
+                NotificationsScreen()
+            } label: {
+                Image(systemName: "bell.fill")
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .background(.background)
+                    .clipShape(Circle())
+            }
+            .accessibilityLabel("Notifications")
         }
     }
 }

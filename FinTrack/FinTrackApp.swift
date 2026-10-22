@@ -16,6 +16,9 @@ struct FinTrackApp: App {
         WindowGroup {
             ContentView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .task {
+                    await NotificationManager.shared.requestAuthorization()
+                }
         }
     }
 }

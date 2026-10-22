@@ -23,11 +23,7 @@ struct ProfileScreen: View {
                         isAuthenticated = false
                         authRoute = .login
                         Task {
-                            await NotificationManager.shared.scheduleNotification(
-                                title: "FinTrack signed out",
-                                body: "Your finance dashboard was locked.",
-                                secondsFromNow: 1
-                            )
+                            await NotificationManager.shared.scheduleSignOutNotification()
                         }
                     } label: {
                         Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")

@@ -5,6 +5,9 @@ struct SettingsScreen: View {
     @AppStorage("insightsAPIURL") private var insightsAPIURL = ""
     @AppStorage("faceIDEnabled") private var faceIDEnabled = true
     @AppStorage("receiptScanningEnabled") private var receiptScanningEnabled = true
+    @AppStorage("signInNotificationsEnabled") private var signInNotificationsEnabled = true
+    @AppStorage("budgetNotificationsEnabled") private var budgetNotificationsEnabled = true
+    @AppStorage("recurringNotificationsEnabled") private var recurringNotificationsEnabled = true
 
     private let currencies = ["LKR", "USD", "GBP", "EUR", "AUD", "CAD", "INR", "JPY"]
 
@@ -14,11 +17,16 @@ struct SettingsScreen: View {
                 faceIDEnabled: $faceIDEnabled,
                 receiptScanningEnabled: $receiptScanningEnabled
             )
+            NotificationSettingsSection(
+                signInNotificationsEnabled: $signInNotificationsEnabled,
+                budgetNotificationsEnabled: $budgetNotificationsEnabled,
+                recurringNotificationsEnabled: $recurringNotificationsEnabled
+            )
             CurrencySettingsSection(
                 currencyCode: $currencyCode,
                 currencies: currencies
             )
-            APIInsightsSettingsSection(insightsAPIURL: $insightsAPIURL)
+//            APIInsightsSettingsSection(insightsAPIURL: $insightsAPIURL)
         }
         .navigationTitle("Settings")
         .navigationBarBackButtonHidden(true)
@@ -59,17 +67,17 @@ struct CurrencySettingsSection: View {
     }
 }
 
-struct APIInsightsSettingsSection: View {
-    @Binding var insightsAPIURL: String
-
-    var body: some View {
-        Section("API Insights") {
-            TextField("https://api.example.com/insights", text: $insightsAPIURL)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-            Text("Leave this blank to hide API insights.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-}
+//struct APIInsightsSettingsSection: View {
+//    @Binding var insightsAPIURL: String
+//
+//    var body: some View {
+//        Section("API Insights") {
+//            TextField("https://api.example.com/insights", text: $insightsAPIURL)
+//                .textInputAutocapitalization(.never)
+//                .keyboardType(.URL)
+//            Text("Leave this blank to hide API insights.")
+//                .font(.footnote)
+//                .foregroundStyle(.secondary)
+//        }
+//    }
+//}

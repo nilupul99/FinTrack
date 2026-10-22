@@ -22,6 +22,9 @@ struct AppShell: View {
             AnalyticsScreen()
                 .tabItem { Label("Insights", systemImage: "sparkles") }
 
+            FinancialNewsScreen()
+                .tabItem { Label("News", systemImage: "newspaper.fill") }
+
             ProfileScreen(
                 userName: userName,
                 isAuthenticated: $isAuthenticated,

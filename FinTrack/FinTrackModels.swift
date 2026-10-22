@@ -1,10 +1,56 @@
 import SwiftUI
 import CoreData
 
-func makeTransactionFetchRequest() -> NSFetchRequest<NSManagedObject> {
-    let request = NSFetchRequest<NSManagedObject>(entityName: "Transaction")
-    request.sortDescriptors = [NSSortDescriptor(key: "createdAt", ascending: false)]
+func makeFetchRequest(entityName: String, sortKey: String = "createdAt") -> NSFetchRequest<NSManagedObject> {
+    let request = NSFetchRequest<NSManagedObject>(entityName: entityName)
+    request.sortDescriptors = [NSSortDescriptor(key: sortKey, ascending: false)]
     return request
+}
+
+func makeTransactionFetchRequest() -> NSFetchRequest<NSManagedObject> {
+    makeFetchRequest(entityName: "Transaction")
+}
+
+@MainActor
+func markNewlyAchievedGoals(
+    in viewContext: NSManagedObjectContext,
+    userEmail: String
+) -> [String] {
+    let transactionRequest = NSFetchRequest<NSManagedObject>(entityName: "Transaction")
+    transactionRequest.predicate = NSPredicate(format: "userEmail == %@", userEmail)
+
+    let goalRequest = NSFetchRequest<NSManagedObject>(entityName: "Goal")
+    goalRequest.predicate = NSPredicate(format: "userEmail == %@", userEmail)
+
+    guard
+        let transactions = try? viewContext.fetch(transactionRequest),
+        let goals = try? viewContext.fetch(goalRequest)
+    else {
+        return []
+    }
+
+    return goals.compactMap { goal in
+        let category = goal.value(forKey: "category") as? String ?? ""
+        let balance = transactions
+            .filter { $0.value(forKey: "category") as? String == category }
+            .reduce(0) { $0 + ($1.value(forKey: "amount") as? Double ?? 0) }
+        let target = goal.value(forKey: "target") as? Double ?? 0
+        let isAchieved = goal.value(forKey: "isAchieved") as? Bool ?? false
+
+        guard balance >= target, target > 0 else {
+            if isAchieved {
+                goal.setValue(false, forKey: "isAchieved")
+            }
+            return nil
+        }
+
+        guard isAchieved == false else {
+            return nil
+        }
+
+        goal.setValue(true, forKey: "isAchieved")
+        return goal.value(forKey: "title") as? String ?? "Goal"
+    }
 }
 
 struct TransactionRowData: Identifiable, Equatable {

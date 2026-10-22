@@ -193,10 +193,9 @@ struct LoginScreen: View {
         activeUserEmail = account.value(forKey: "email") as? String ?? ""
         isAuthenticated = true
         Task {
-            await NotificationManager.shared.scheduleNotification(
-                title: "FinTrack sign in",
-                body: "You signed in with \(method).",
-                secondsFromNow: 1
+            let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
+            await NotificationManager.shared.scheduleSignInNotification(
+                body: "You signed in with \(method) at \(signInTime)."
             )
         }
     }
@@ -300,10 +299,8 @@ struct SignUpScreen: View {
             activeUserEmail = normalizedEmail
             isAuthenticated = true
             Task {
-                await NotificationManager.shared.scheduleNotification(
-                    title: "Welcome to FinTrack",
-                    body: "Your account is ready. Start by adding your first transaction.",
-                    secondsFromNow: 1
+                await NotificationManager.shared.scheduleSignInNotification(
+                    body: "Your account is ready. Start by adding your first transaction."
                 )
             }
         } catch {
@@ -411,10 +408,9 @@ struct FaceIDScreen: View {
                 if success {
                     currentUserName = account.value(forKey: "name") as? String ?? ""
                     isAuthenticated = true
-                    await NotificationManager.shared.scheduleNotification(
-                        title: "FinTrack sign in",
-                        body: "You signed in with Face ID.",
-                        secondsFromNow: 1
+                    let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
+                    await NotificationManager.shared.scheduleSignInNotification(
+                        body: "You signed in with Face ID at \(signInTime)."
                     )
                 } else {
                     statusMessage = authenticationError?.localizedDescription ?? "Authentication failed. Try again."

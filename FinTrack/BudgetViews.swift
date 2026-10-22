@@ -2,60 +2,54 @@ import SwiftUI
 import CoreData
 
 struct BudgetScreen: View {
+    @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @State private var isShowingCreateBudget = false
     @FetchRequest private var savedTransactions: FetchedResults<NSManagedObject>
+    @FetchRequest private var savedBudgets: FetchedResults<NSManagedObject>
 
     init() {
-        _savedTransactions = FetchRequest(fetchRequest: makeTransactionFetchRequest(), animation: .default)
+        _savedTransactions = FetchRequest(
+            fetchRequest: makeTransactionFetchRequest(),
+            animation: .default
+        )
+        _savedBudgets = FetchRequest(
+            fetchRequest: makeFetchRequest(entityName: "Budget"),
+            animation: .default
+        )
     }
 
-    private var categoryTotals: [(name: String, amount: Double)] {
-        let expenses = savedTransactions.filter {
-            ($0.value(forKey: "userEmail") as? String == activeUserEmail) &&
-            ($0.value(forKey: "amount") as? Double ?? 0) < 0
-        }
-
-        let totals: [(name: String, amount: Double)] = Dictionary(grouping: expenses) {
-            $0.value(forKey: "category") as? String ?? "Other"
-        }
-        .map { name, transactions in
-            (name: name, amount: transactions.reduce(0) { $0 + abs($1.value(forKey: "amount") as? Double ?? 0) })
-        }
-
-        return totals.sorted { left, right in
-            left.amount > right.amount
-        }
-    }
-
-    private var totalSpent: Double {
-        categoryTotals.reduce(0) { $0 + $1.amount }
+    private var budgets: [NSManagedObject] {
+        savedBudgets.filter { $0.value(forKey: "userEmail") as? String == activeUserEmail }
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    SpendingSummaryCard(spent: totalSpent)
-                    Text("Expense Categories")
-                        .font(.headline)
-
-                    if categoryTotals.isEmpty {
+                    if budgets.isEmpty {
                         ContentUnavailableView(
-                            "No Expenses Yet",
+                            "No Budgets Yet",
                             systemImage: "chart.pie",
-                            description: Text("Add an expense transaction to see your budget breakdown.")
+                            description: Text("Create a category budget to begin tracking expenses.")
                         )
-                        .padding(.vertical, 40)
+                        .padding(.vertical, 48)
                     } else {
+                        Text("Category Budgets")
+                            .font(.headline)
+
                         VStack(spacing: 12) {
-                            ForEach(categoryTotals, id: \.name) { category in
-                                BudgetCategoryRow(
-                                    name: category.name,
-                                    spent: category.amount,
-                                    share: totalSpent == 0 ? 0 : category.amount / totalSpent,
-                                    tint: tint(for: category.name),
-                                    icon: icon(for: category.name)
-                                )
+                            ForEach(budgets, id: \.objectID) { budget in
+                                NavigationLink {
+                                    EditBudgetScreen(budget: budget)
+                                } label: {
+                                    BudgetCategoryRow(
+                                        category: budget.value(forKey: "category") as? String ?? "Other",
+                                        spent: spent(for: budget),
+                                        limit: budget.value(forKey: "limit") as? Double ?? 0
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
@@ -64,61 +58,241 @@ struct BudgetScreen: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Budget")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isShowingCreateBudget = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Create Budget")
+                }
+            }
+            .sheet(isPresented: $isShowingCreateBudget) {
+                CreateBudgetScreen(
+                    userEmail: activeUserEmail,
+                    viewContext: viewContext
+                )
+            }
         }
     }
 
-    private func tint(for category: String) -> Color {
-        switch category {
-        case "Food": .orange
-        case "Transport": .blue
-        case "Bills": .purple
-        default: .pink
-        }
-    }
+    private func spent(for budget: NSManagedObject) -> Double {
+        let category = budget.value(forKey: "category") as? String ?? ""
 
-    private func icon(for category: String) -> String {
-        switch category {
-        case "Food": "fork.knife"
-        case "Transport": "car.fill"
-        case "Bills": "bolt.fill"
-        default: "tag.fill"
+        return savedTransactions.reduce(0) { total, transaction in
+            guard
+                transaction.value(forKey: "userEmail") as? String == activeUserEmail,
+                transaction.value(forKey: "category") as? String == category
+            else {
+                return total
+            }
+
+            let amount = transaction.value(forKey: "amount") as? Double ?? 0
+            return total + (amount < 0 ? -amount : 0)
         }
     }
 }
 
 struct BudgetCategoryRow: View {
-    let name: String
+    let category: String
     let spent: Double
-    let share: Double
-    let tint: Color
-    let icon: String
+    let limit: Double
+
+    private var remaining: Double {
+        max(limit - spent, 0)
+    }
+
+    private var progress: Double {
+        guard limit > 0 else { return 0 }
+        return min(spent / limit, 1)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .foregroundStyle(tint)
-                    .frame(width: 42, height: 42)
-                    .background(tint.opacity(0.12))
-                    .clipShape(Circle())
+            HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(name)
+                    Text(category)
                         .font(.headline)
-                    CurrencyText(amount: spent)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 3) {
+                        CurrencyText(amount: spent)
+                        Text("spent of")
+                        CurrencyText(amount: limit)
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
+
                 Spacer()
-                Text(share, format: .percent.precision(.fractionLength(0)))
+
+                CurrencyText(amount: remaining)
                     .font(.subheadline.bold())
-                    .foregroundStyle(tint)
+                    .foregroundStyle(remaining == 0 ? .red : .green)
             }
 
-            ProgressView(value: share)
-                .tint(tint)
+            ProgressView(value: progress)
+                .tint(remaining == 0 ? .red : .blue)
+
+            Text(remaining == 0 ? "Budget reached" : "Remaining")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .padding(16)
         .background(.background)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+struct CreateBudgetScreen: View {
+    let userEmail: String
+    let viewContext: NSManagedObjectContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var category = "Food"
+    @State private var amount = ""
+    @State private var isShowingValidationAlert = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Category Budget") {
+                    Picker("Category", selection: $category) {
+                        Text("Food").tag("Food")
+                        Text("Transport").tag("Transport")
+                        Text("Bills").tag("Bills")
+                        Text("Salary").tag("Salary")
+                    }
+                    TextField("Budget Amount", text: $amount)
+                        .keyboardType(.decimalPad)
+                }
+            }
+            .navigationTitle("Create Budget")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: saveBudget)
+                }
+            }
+            .alert("Enter a valid budget amount.", isPresented: $isShowingValidationAlert) {
+                Button("OK", role: .cancel) { }
+            }
+        }
+    }
+
+    private func saveBudget() {
+        guard let limit = Double(amount), limit > 0, userEmail.isEmpty == false else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        let request = NSFetchRequest<NSManagedObject>(entityName: "Budget")
+        request.fetchLimit = 1
+        request.predicate = NSPredicate(
+            format: "userEmail == %@ AND category == %@",
+            userEmail,
+            category
+        )
+
+        let budget: NSManagedObject
+        if let existingBudget = try? viewContext.fetch(request).first {
+            budget = existingBudget
+        } else {
+            budget = NSEntityDescription.insertNewObject(forEntityName: "Budget", into: viewContext)
+            budget.setValue(userEmail, forKey: "userEmail")
+            budget.setValue(category, forKey: "category")
+            budget.setValue(Date(), forKey: "createdAt")
+        }
+
+        budget.setValue(limit, forKey: "limit")
+
+        do {
+            try viewContext.save()
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
+        }
+    }
+}
+
+struct EditBudgetScreen: View {
+    let budget: NSManagedObject
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var category: String
+    @State private var amount: String
+    @State private var isShowingValidationAlert = false
+
+    init(budget: NSManagedObject) {
+        self.budget = budget
+        _category = State(initialValue: budget.value(forKey: "category") as? String ?? "Food")
+        let limit = budget.value(forKey: "limit") as? Double ?? 0
+        _amount = State(initialValue: String(format: "%.2f", limit))
+    }
+
+    var body: some View {
+        Form {
+            Section("Category Budget") {
+                Picker("Category", selection: $category) {
+                    Text("Food").tag("Food")
+                    Text("Transport").tag("Transport")
+                    Text("Bills").tag("Bills")
+                    Text("Salary").tag("Salary")
+                }
+                TextField("Budget Amount", text: $amount)
+                    .keyboardType(.decimalPad)
+            }
+
+            Section {
+                Button("Delete Budget", role: .destructive, action: deleteBudget)
+            }
+        }
+        .navigationTitle("Edit Budget")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save", action: saveBudget)
+            }
+        }
+        .alert("Enter a valid budget amount.", isPresented: $isShowingValidationAlert) {
+            Button("OK", role: .cancel) { }
+        }
+    }
+
+    private func saveBudget() {
+        guard let limit = Double(amount), limit > 0 else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        let previousCategory = budget.value(forKey: "category") as? String ?? ""
+        let previousLimit = budget.value(forKey: "limit") as? Double ?? 0
+        budget.setValue(category, forKey: "category")
+        budget.setValue(limit, forKey: "limit")
+
+        do {
+            try viewContext.save()
+            if previousCategory != category || previousLimit != limit {
+                Task {
+                    await NotificationManager.shared.scheduleBudgetLimitChanged(category: category)
+                }
+            }
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
+        }
+    }
+
+    private func deleteBudget() {
+        viewContext.delete(budget)
+
+        do {
+            try viewContext.save()
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
+        }
     }
 }

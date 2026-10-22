@@ -44,7 +44,14 @@ struct TransactionsScreen: View {
                         )
                     } else {
                         ForEach(transactions, id: \.objectID) { transaction in
-                            TransactionRow(transaction: TransactionRowData(managedObject: transaction))
+                            NavigationLink {
+                                EditTransactionScreen(
+                                    transaction: transaction,
+                                    userEmail: activeUserEmail
+                                )
+                            } label: {
+                                TransactionRow(transaction: TransactionRowData(managedObject: transaction))
+                            }
                         }
                     }
                 }
@@ -133,13 +140,28 @@ struct AddTransactionScreen: View {
         transaction.setValue(activeUserEmail, forKey: "userEmail")
 
         do {
+            let newlyAchievedGoals = markNewlyAchievedGoals(
+                in: viewContext,
+                userEmail: activeUserEmail
+            )
             try viewContext.save()
+            let reachedBudgetLimit = kind == .expense && didReachBudgetLimit(
+                for: category,
+                addedExpense: enteredAmount
+            )
+
             Task {
-                await NotificationManager.shared.scheduleNotification(
-                    title: "Transaction added",
-                    body: "Your \(kind.rawValue.lowercased()) was added to FinTrack.",
-                    secondsFromNow: 1
-                )
+                if reachedBudgetLimit {
+                    await NotificationManager.shared.scheduleBudgetWarning(category: category)
+                }
+
+                for goalTitle in newlyAchievedGoals {
+                    await NotificationManager.shared.scheduleNotification(
+                        title: "Goal achieved",
+                        body: "You achieved your \(goalTitle) goal.",
+                        secondsFromNow: 2
+                    )
+                }
             }
             dismiss()
         } catch {
@@ -147,7 +169,148 @@ struct AddTransactionScreen: View {
             isShowingValidationAlert = true
         }
     }
+
+    private func didReachBudgetLimit(for category: String, addedExpense: Double) -> Bool {
+        let budgetRequest = NSFetchRequest<NSManagedObject>(entityName: "Budget")
+        budgetRequest.fetchLimit = 1
+        budgetRequest.predicate = NSPredicate(
+            format: "userEmail == %@ AND category == %@",
+            activeUserEmail,
+            category
+        )
+
+        guard let budget = try? viewContext.fetch(budgetRequest).first,
+              let limit = budget.value(forKey: "limit") as? Double,
+              limit > 0 else {
+            return false
+        }
+
+        let transactionRequest = NSFetchRequest<NSManagedObject>(entityName: "Transaction")
+        transactionRequest.predicate = NSPredicate(
+            format: "userEmail == %@ AND category == %@",
+            activeUserEmail,
+            category
+        )
+
+        let spent = (try? viewContext.fetch(transactionRequest))?.reduce(0) { total, transaction in
+            let amount = transaction.value(forKey: "amount") as? Double ?? 0
+            return total + (amount < 0 ? -amount : 0)
+        } ?? 0
+
+        return spent >= limit && spent - addedExpense < limit
+    }
 }
+
+
+struct EditTransactionScreen: View {
+    let transaction: NSManagedObject
+    let userEmail: String
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    @State private var title: String
+    @State private var amount: String
+    @State private var category: String
+    @State private var isExpense: Bool
+    @State private var isShowingValidationAlert = false
+
+    init(transaction: NSManagedObject, userEmail: String) {
+        self.transaction = transaction
+        self.userEmail = userEmail
+
+        let storedAmount = transaction.value(forKey: "amount") as? Double ?? 0
+        _title = State(initialValue: transaction.value(forKey: "title") as? String ?? "")
+        _amount = State(initialValue: String(format: "%.2f", abs(storedAmount)))
+        _category = State(initialValue: transaction.value(forKey: "category") as? String ?? "Food")
+        _isExpense = State(initialValue: storedAmount < 0)
+    }
+
+    var body: some View {
+        Form {
+            Section("Transaction") {
+                Picker("Type", selection: $isExpense) {
+                    Text("Expense").tag(true)
+                    Text("Income").tag(false)
+                }
+                .pickerStyle(.segmented)
+
+                TextField("Title", text: $title)
+                TextField("Amount", text: $amount)
+                    .keyboardType(.decimalPad)
+                Picker("Category", selection: $category) {
+                    Text("Food").tag("Food")
+                    Text("Transport").tag("Transport")
+                    Text("Bills").tag("Bills")
+                    Text("Salary").tag("Salary")
+                }
+            }
+
+            Section {
+                Button("Delete Transaction", role: .destructive, action: deleteTransaction)
+            }
+        }
+        .navigationTitle("Edit Transaction")
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save", action: saveTransaction)
+            }
+        }
+        .alert("Enter a title and a valid amount.", isPresented: $isShowingValidationAlert) {
+            Button("OK", role: .cancel) { }
+        }
+    }
+
+    private func saveTransaction() {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedTitle.isEmpty == false, let enteredAmount = Double(amount), enteredAmount > 0 else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        transaction.setValue(trimmedTitle, forKey: "title")
+        transaction.setValue(category, forKey: "category")
+        transaction.setValue(isExpense ? -enteredAmount : enteredAmount, forKey: "amount")
+
+        do {
+            let newlyAchievedGoals = markNewlyAchievedGoals(
+                in: viewContext,
+                userEmail: userEmail
+            )
+            try viewContext.save()
+            scheduleGoalNotifications(for: newlyAchievedGoals)
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
+        }
+    }
+
+    private func deleteTransaction() {
+        viewContext.delete(transaction)
+
+        do {
+            _ = markNewlyAchievedGoals(in: viewContext, userEmail: userEmail)
+            try viewContext.save()
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
+        }
+    }
+
+    private func scheduleGoalNotifications(for goalTitles: [String]) {
+        Task {
+            for goalTitle in goalTitles {
+                await NotificationManager.shared.scheduleNotification(
+                    title: "Goal achieved",
+                    body: "You achieved your \(goalTitle) goal.",
+                    secondsFromNow: 1
+                )
+            }
+        }
+    }
+}
+
 
 struct RecurringTransactionsScreen: View {
     @State private var isShowingAddRecurring = false
@@ -204,11 +367,14 @@ struct AddRecurringTransactionScreen: View {
 //                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
+                        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                        guard trimmedName.isEmpty == false else { return }
+
                         Task {
-                            await NotificationManager.shared.scheduleNotification(
-                                title: "Recurring reminder set",
-                                body: "FinTrack will remind you about this recurring transaction.",
-                                secondsFromNow: 2
+                            await NotificationManager.shared.scheduleRecurringReminder(
+                                name: trimmedName,
+                                cadence: cadence
                             )
                         }
                         dismiss()
