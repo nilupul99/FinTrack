@@ -1,55 +1,45 @@
 import SwiftUI
 
 struct NotificationsScreen: View {
-    @AppStorage("signInNotificationsEnabled") private var signInNotificationsEnabled = true
-    @AppStorage("budgetNotificationsEnabled") private var budgetNotificationsEnabled = true
-    @AppStorage("recurringNotificationsEnabled") private var recurringNotificationsEnabled = true
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @State private var notifications: [StoredNotification] = []
 
     var body: some View {
         List {
-            Section("Active Alerts") {
-                if signInNotificationsEnabled {
-                    NotificationMessageRow(
-                        title: "Sign-in alerts",
-                        message: "You will be notified when your account is signed in or out.",
-                        systemImage: "person.badge.key.fill",
-                        tint: .blue
-                    )
+            if notifications.isEmpty {
+                ContentUnavailableView(
+                    "No Notifications Yet",
+                    systemImage: "bell.slash",
+                    description: Text("Your sign-in, budget, and recurring reminders will appear here.")
+                )
+            } else {
+                Section("Recent") {
+                    ForEach(notifications) { notification in
+                        NotificationHistoryRow(
+                            title: notification.title,
+                            message: notification.message,
+                            date: notification.createdAt
+                        )
+                    }
                 }
 
-                if budgetNotificationsEnabled {
-                    NotificationMessageRow(
-                        title: "Budget warnings",
-                        message: "You will be notified when an expense reaches a budget limit.",
-                        systemImage: "chart.pie.fill",
-                        tint: .orange
-                    )
-                }
-
-                if recurringNotificationsEnabled {
-                    NotificationMessageRow(
-                        title: "Recurring reminders",
-                        message: "You will be reminded about recurring transactions and payments.",
-                        systemImage: "repeat.circle.fill",
-                        tint: .purple
-                    )
-                }
-
-                if !signInNotificationsEnabled &&
-                    !budgetNotificationsEnabled &&
-                    !recurringNotificationsEnabled {
-                    ContentUnavailableView(
-                        "No Alerts Enabled",
-                        systemImage: "bell.slash",
-                        description: Text("Turn on notification alerts in Settings to see them here.")
-                    )
+                Section {
+                    Button("Clear Notification History", role: .destructive) {
+                        InAppNotificationStore.removeAll(for: activeUserEmail)
+                        reloadNotifications()
+                    }
                 }
             }
-
-
         }
         .navigationTitle("Notifications")
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            reloadNotifications()
+        }
+    }
+
+    private func reloadNotifications() {
+        notifications = InAppNotificationStore.notifications(for: activeUserEmail)
     }
 }
 
@@ -67,27 +57,21 @@ struct NotificationSettingsSection: View {
     }
 }
 
-struct NotificationMessageRow: View {
-    let title: LocalizedStringKey
-    let message: LocalizedStringKey
-    let systemImage: String
-    let tint: Color
+struct NotificationHistoryRow: View {
+    let title: String
+    let message: String
+    let date: Date
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .foregroundStyle(tint)
-                .frame(width: 28, height: 28)
-                .background(tint.opacity(0.12))
-                .clipShape(Circle())
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                Text(message)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
+        VStack(alignment: .leading, spacing: 5) {
+            Text(title)
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text(date, format: .dateTime.day().month().year().hour().minute())
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 4)
     }

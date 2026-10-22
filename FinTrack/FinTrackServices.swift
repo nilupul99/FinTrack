@@ -60,9 +60,13 @@ final class NotificationManager {
     func scheduleRecurringReminder(name: String, cadence: String) async {
         guard isEnabled("recurringNotificationsEnabled") else { return }
 
+        let title = "Upcoming recurring transaction"
+        let body = "(name) is due tomorrow ((cadence.lowercased()))."
+        InAppNotificationStore.append(title: title, message: body)
+
         let content = UNMutableNotificationContent()
-        content.title = "Upcoming recurring transaction"
-        content.body = "(name) is due tomorrow ((cadence.lowercased()))."
+        content.title = title
+        content.body = body
         content.sound = .default
 
         let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: .now) ?? .now
@@ -79,6 +83,8 @@ final class NotificationManager {
     }
 
     func scheduleNotification(title: String, body: String, secondsFromNow: TimeInterval) async {
+        InAppNotificationStore.append(title: title, message: body)
+
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
 
@@ -104,6 +110,68 @@ final class NotificationPresentationDelegate: NSObject, UNUserNotificationCenter
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         [.banner, .sound, .list]
+    }
+}
+
+struct StoredNotification: Codable, Identifiable, Equatable {
+    let id: UUID
+    let userEmail: String
+    let title: String
+    let message: String
+    let createdAt: Date
+}
+
+enum InAppNotificationStore {
+    private static let storageKey = "storedNotifications"
+
+    static func notifications(for userEmail: String) -> [StoredNotification] {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let notifications = try? JSONDecoder().decode([StoredNotification].self, from: data) else {
+            return []
+        }
+
+        return notifications
+            .filter { $0.userEmail == userEmail }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    static func append(title: String, message: String) {
+        let userEmail = UserDefaults.standard.string(forKey: "activeUserEmail") ?? ""
+        guard userEmail.isEmpty == false else { return }
+
+        var allNotifications = allNotifications()
+        allNotifications.append(
+            StoredNotification(
+                id: UUID(),
+                userEmail: userEmail,
+                title: title,
+                message: message,
+                createdAt: .now
+            )
+        )
+
+        if allNotifications.count > 100 {
+            allNotifications.removeFirst(allNotifications.count - 100)
+        }
+
+        if let data = try? JSONEncoder().encode(allNotifications) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    static func removeAll(for userEmail: String) {
+        let retainedNotifications = allNotifications().filter { $0.userEmail != userEmail }
+        if let data = try? JSONEncoder().encode(retainedNotifications) {
+            UserDefaults.standard.set(data, forKey: storageKey)
+        }
+    }
+
+    private static func allNotifications() -> [StoredNotification] {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let notifications = try? JSONDecoder().decode([StoredNotification].self, from: data) else {
+            return []
+        }
+        return notifications
     }
 }
 
