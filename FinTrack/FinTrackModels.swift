@@ -11,6 +11,22 @@ func makeTransactionFetchRequest() -> NSFetchRequest<NSManagedObject> {
     makeFetchRequest(entityName: "Transaction")
 }
 
+enum FinancialMath {
+    /// Goals count all activity in a matching category, regardless of whether
+    /// the transaction is income or an expense.
+    static func goalContribution(for amount: Double) -> Double {
+        abs(amount)
+    }
+
+    static func budgetSpending(for amount: Double) -> Double {
+        max(-amount, 0)
+    }
+
+    static func signedRecurringAmount(amount: Double, isExpense: Bool) -> Double {
+        isExpense ? -abs(amount) : abs(amount)
+    }
+}
+
 @MainActor
 func markNewlyAchievedGoals(
     in viewContext: NSManagedObjectContext,
@@ -33,7 +49,11 @@ func markNewlyAchievedGoals(
         let category = goal.value(forKey: "category") as? String ?? ""
         let categoryTotal = transactions
             .filter { $0.value(forKey: "category") as? String == category }
-            .reduce(0) { $0 + abs($1.value(forKey: "amount") as? Double ?? 0) }
+            .reduce(0) {
+                $0 + FinancialMath.goalContribution(
+                    for: $1.value(forKey: "amount") as? Double ?? 0
+                )
+            }
         let target = goal.value(forKey: "target") as? Double ?? 0
         let isAchieved = goal.value(forKey: "isAchieved") as? Bool ?? false
 
@@ -73,7 +93,7 @@ struct RecurringTransactionData: Identifiable, Codable {
     let createdAt: Date
 
     var signedAmount: Double {
-        isExpense ? -amount : amount
+        FinancialMath.signedRecurringAmount(amount: amount, isExpense: isExpense)
     }
 }
 

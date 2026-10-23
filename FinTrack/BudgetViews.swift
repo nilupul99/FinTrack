@@ -90,7 +90,7 @@ struct BudgetScreen: View {
             }
 
             let amount = transaction.value(forKey: "amount") as? Double ?? 0
-            return total + (amount < 0 ? -amount : 0)
+            return total + FinancialMath.budgetSpending(for: amount)
         }
     }
 }

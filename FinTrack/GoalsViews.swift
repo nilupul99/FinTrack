@@ -34,7 +34,9 @@ struct GoalsScreen: View {
 
             // Goals measure activity in their category, so both an income and
             // an expense contribute by their absolute transaction value.
-            return total + abs(transaction.value(forKey: "amount") as? Double ?? 0)
+            return total + FinancialMath.goalContribution(
+                for: transaction.value(forKey: "amount") as? Double ?? 0
+            )
         }
     }
 
