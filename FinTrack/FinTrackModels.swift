@@ -62,6 +62,45 @@ struct TransactionRowData: Identifiable, Equatable {
     let tint: Color
 }
 
+struct RecurringTransactionData: Identifiable, Codable {
+    let id: UUID
+    let userEmail: String
+    let name: String
+    let category: String
+    let amount: Double
+    let cadence: String
+    let isExpense: Bool
+    let createdAt: Date
+
+    var signedAmount: Double {
+        isExpense ? -amount : amount
+    }
+}
+
+enum RecurringTransactionStore {
+    static func load(from encodedTransactions: String) -> [RecurringTransactionData] {
+        guard
+            let data = encodedTransactions.data(using: .utf8),
+            let transactions = try? JSONDecoder().decode([RecurringTransactionData].self, from: data)
+        else {
+            return []
+        }
+
+        return transactions
+    }
+
+    static func encode(_ transactions: [RecurringTransactionData]) -> String {
+        guard
+            let data = try? JSONEncoder().encode(transactions),
+            let encodedTransactions = String(data: data, encoding: .utf8)
+        else {
+            return ""
+        }
+
+        return encodedTransactions
+    }
+}
+
 extension TransactionRowData {
     init(managedObject: NSManagedObject) {
         let amount = managedObject.value(forKey: "amount") as? Double ?? 0

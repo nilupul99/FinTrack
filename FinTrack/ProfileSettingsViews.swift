@@ -10,14 +10,6 @@ struct ProfileScreen: View {
             List {
                 ProfileHeaderSection(userName: userName)
 
-                Section("Account") {
-                    NavigationLink {
-                        NotificationsScreen()
-                    } label: {
-                        Label("Notifications", systemImage: "bell.badge.fill")
-                    }
-                }
-
                 Section {
                     Button(role: .destructive) {
                         isAuthenticated = false
@@ -32,6 +24,7 @@ struct ProfileScreen: View {
                 }
             }
             .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

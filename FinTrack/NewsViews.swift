@@ -112,6 +112,7 @@ struct FinancialNewsScreen: View {
                 }
             }
             .navigationTitle("Financial News")
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 await model.load()
             }

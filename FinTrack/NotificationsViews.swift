@@ -32,6 +32,7 @@ struct NotificationsScreen: View {
             }
         }
         .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .onAppear {
             reloadNotifications()

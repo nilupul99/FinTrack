@@ -136,6 +136,8 @@ struct BalanceMetric: View {
 }
 
 struct QuickActionsRow: View {
+    @AppStorage("receiptScanningEnabled") private var receiptScanningEnabled = true
+
     var body: some View {
         HStack(spacing: 12) {
             NavigationLink { AddTransactionScreen(kind: .expense) } label: {
@@ -147,8 +149,10 @@ struct QuickActionsRow: View {
             NavigationLink { RecurringTransactionsScreen() } label: {
                 QuickActionContent(title: "Recurring", systemImage: "repeat.circle.fill")
             }
-            NavigationLink { ReceiptScannerScreen() } label: {
-                QuickActionContent(title: "Receipt", systemImage: "doc.viewfinder")
+            if receiptScanningEnabled {
+                NavigationLink { ReceiptScannerScreen() } label: {
+                    QuickActionContent(title: "Receipt", systemImage: "doc.viewfinder")
+                }
             }
         }
     }

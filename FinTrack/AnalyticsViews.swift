@@ -91,6 +91,7 @@ struct AnalyticsScreen: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Analytics")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

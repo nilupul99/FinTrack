@@ -29,6 +29,7 @@ struct SettingsScreen: View {
 //            APIInsightsSettingsSection(insightsAPIURL: $insightsAPIURL)
         }
         .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
     }
 }

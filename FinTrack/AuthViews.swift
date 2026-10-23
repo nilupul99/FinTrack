@@ -130,10 +130,10 @@ struct LoginScreen: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
 
-                        Button { authRoute = .faceID } label: {
-                            Label("Use Face ID", systemImage: "faceid")
-                        }
-                        .font(.subheadline.weight(.semibold))
+//                        Button { authRoute = .faceID } label: {
+//                            Label("Use Face ID", systemImage: "faceid")
+//                        }
+//                        .font(.subheadline.weight(.semibold))
                     }
                     .padding(20)
                     .background(.background)

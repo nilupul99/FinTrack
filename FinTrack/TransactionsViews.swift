@@ -153,6 +153,7 @@ struct AddTransactionScreen: View {
                 }
             }
             .navigationTitle("Add \(kind.rawValue)")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
 //                ToolbarItem(placement: .cancellationAction) {
 //                    Button("Cancel") { dismiss() }
@@ -291,6 +292,7 @@ struct EditTransactionScreen: View {
             }
         }
         .navigationTitle("Edit Transaction")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: saveTransaction)
@@ -355,17 +357,38 @@ struct EditTransactionScreen: View {
 
 
 struct RecurringTransactionsScreen: View {
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("recurringTransactions") private var encodedRecurringTransactions = ""
     @State private var isShowingAddRecurring = false
+
+    private var recurringTransactions: [RecurringTransactionData] {
+        RecurringTransactionStore.load(from: encodedRecurringTransactions).filter {
+            $0.userEmail == activeUserEmail
+        }
+    }
 
     var body: some View {
         List {
-            ContentUnavailableView(
-                "No Recurring Transactions",
-                systemImage: "repeat",
-                description: Text("Add a recurring transaction to see it here.")
-            )
+            if recurringTransactions.isEmpty {
+                ContentUnavailableView(
+                    "No Recurring Transactions",
+                    systemImage: "repeat",
+                    description: Text("Add a recurring transaction to see it here.")
+                )
+            } else {
+                ForEach(recurringTransactions) { transaction in
+                    RecurringRow(
+                        title: transaction.name,
+                        cadence: "\(transaction.cadence) • \(transaction.category)",
+                        amount: transaction.signedAmount,
+                        icon: "repeat.circle.fill",
+                        tint: transaction.isExpense ? .orange : .green
+                    )
+                }
+            }
         }
         .navigationTitle("Recurring")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button { isShowingAddRecurring = true } label: {
@@ -382,10 +405,15 @@ struct RecurringTransactionsScreen: View {
 
 struct AddRecurringTransactionScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.managedObjectContext) private var viewContext
+    @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("recurringTransactions") private var encodedRecurringTransactions = ""
     @State private var name = ""
     @State private var amount = ""
+    @State private var category = "Bills"
     @State private var cadence = "Monthly"
     @State private var isExpense = true
+    @State private var isShowingValidationAlert = false
 
     var body: some View {
         NavigationStack {
@@ -395,6 +423,7 @@ struct AddRecurringTransactionScreen: View {
                     TextField("Name", text: $name)
                     TextField("Amount", text: $amount)
                         .keyboardType(.decimalPad)
+                    CategoryPicker(category: $category)
                     Picker("Repeats", selection: $cadence) {
                         Text("Weekly").tag("Weekly")
                         Text("Monthly").tag("Monthly")
@@ -403,26 +432,82 @@ struct AddRecurringTransactionScreen: View {
                 }
             }
             .navigationTitle("Add Recurring")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-//                ToolbarItem(placement: .cancellationAction) {
-//                    Button("Cancel") { dismiss() }
-//                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                        guard trimmedName.isEmpty == false else { return }
-
-                        Task {
-                            await NotificationManager.shared.scheduleRecurringReminder(
-                                name: trimmedName,
-                                cadence: cadence
-                            )
-                        }
-                        dismiss()
-                    }
+                    Button("Save", action: saveRecurringTransaction)
                 }
             }
+            .alert("Enter a name and a valid amount.", isPresented: $isShowingValidationAlert) {
+                Button("OK", role: .cancel) { }
+            }
+        }
+    }
+
+    private func saveRecurringTransaction() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            trimmedName.isEmpty == false,
+            let enteredAmount = Double(amount),
+            enteredAmount > 0,
+            activeUserEmail.isEmpty == false
+        else {
+            isShowingValidationAlert = true
+            return
+        }
+
+        let transaction = NSEntityDescription.insertNewObject(
+            forEntityName: "Transaction",
+            into: viewContext
+        )
+        transaction.setValue(trimmedName, forKey: "title")
+        transaction.setValue(category, forKey: "category")
+        transaction.setValue(isExpense ? -enteredAmount : enteredAmount, forKey: "amount")
+        transaction.setValue(Date(), forKey: "createdAt")
+        transaction.setValue(activeUserEmail, forKey: "userEmail")
+
+        do {
+            let newlyAchievedGoals = markNewlyAchievedGoals(
+                in: viewContext,
+                userEmail: activeUserEmail
+            )
+            try viewContext.save()
+
+            var savedRecurringTransactions = RecurringTransactionStore.load(
+                from: encodedRecurringTransactions
+            )
+            savedRecurringTransactions.append(
+                RecurringTransactionData(
+                    id: UUID(),
+                    userEmail: activeUserEmail,
+                    name: trimmedName,
+                    category: category,
+                    amount: enteredAmount,
+                    cadence: cadence,
+                    isExpense: isExpense,
+                    createdAt: .now
+                )
+            )
+            encodedRecurringTransactions = RecurringTransactionStore.encode(savedRecurringTransactions)
+
+            Task {
+                await NotificationManager.shared.scheduleRecurringReminder(
+                    name: trimmedName,
+                    cadence: cadence
+                )
+
+                for goalTitle in newlyAchievedGoals {
+                    await NotificationManager.shared.scheduleNotification(
+                        title: "Goal achieved",
+                        body: "You achieved your \(goalTitle) goal.",
+                        secondsFromNow: 2
+                    )
+                }
+            }
+            dismiss()
+        } catch {
+            viewContext.rollback()
+            isShowingValidationAlert = true
         }
     }
 }
@@ -563,6 +648,7 @@ struct ReceiptScannerScreen: View {
             }
             .padding(24)
             .navigationTitle("Scan Receipt")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isShowingScanner) {
                 DocumentCameraView { images in
                     Task {
@@ -671,6 +757,7 @@ struct ReceiptConfirmationScreen: View {
                 }
             }
             .navigationTitle("Review Receipt")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save Expense", action: saveTransaction)

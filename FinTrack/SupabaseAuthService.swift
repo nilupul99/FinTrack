@@ -63,6 +63,10 @@ struct SupabaseAuthService {
         "c3B3bGNkaHVncXZ1Y2hnbXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NzM1MzMsImV4cCI6MjEwODI0OTUzM30." +
         "w29yTsSB4Q5V65VHUZ118I46s2gkcXqlqaAe0Se4x70"
 
+    var hasSavedSession: Bool {
+        SecureSessionStore.load() != nil
+    }
+
     func signUp(name: String, email: String, password: String) async throws -> SignUpResult {
         let request = SignUpRequest(email: email, password: password, data: ["name": name])
         let response: AuthResponse = try await send(

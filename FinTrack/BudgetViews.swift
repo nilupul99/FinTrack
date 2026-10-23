@@ -161,6 +161,7 @@ struct CreateBudgetScreen: View {
                 }
             }
             .navigationTitle("Create Budget")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -239,6 +240,7 @@ struct EditBudgetScreen: View {
             }
         }
         .navigationTitle("Edit Budget")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: saveBudget)

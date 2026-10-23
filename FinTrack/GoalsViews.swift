@@ -174,6 +174,7 @@ struct AddGoalScreen: View {
                 }
             }
             .navigationTitle("Add Goal")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -250,6 +251,7 @@ struct EditGoalScreen: View {
             }
         }
         .navigationTitle("Edit Goal")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: saveGoal)

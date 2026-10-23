@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var isAuthenticated = false
     @State private var currentUserName = ""
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("faceIDEnabled") private var faceIDEnabled = true
 
     var body: some View {
         Group {
@@ -36,12 +37,11 @@ struct ContentView: View {
         .task {
             await NotificationManager.shared.requestAuthorization()
 
-            if let user = await SupabaseAuthService.shared.restoreSession() {
-                currentUserName = user.displayName
-                activeUserEmail = user.email
-                isAuthenticated = true
+            if SupabaseAuthService.shared.hasSavedSession {
+                authRoute = faceIDEnabled ? .faceID : .login
             }
         }
+
     }
 }
 
