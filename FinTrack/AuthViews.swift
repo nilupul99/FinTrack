@@ -105,6 +105,7 @@ struct LoginScreen: View {
     @State private var alertMessage = ""
     @State private var isShowingAlert = false
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("activeUserID") private var activeUserID = ""
 
     var body: some View {
         NavigationStack {
@@ -178,15 +179,21 @@ struct LoginScreen: View {
                 email: normalizedEmail,
                 password: password
             )
-            completeSignIn(name: user.displayName, email: user.email, method: "password")
+            completeSignIn(
+                name: user.displayName,
+                email: user.email,
+                userID: user.id,
+                method: "password"
+            )
         } catch {
             showAlert(error.localizedDescription)
         }
     }
 
-    private func completeSignIn(name: String, email: String, method: String) {
+    private func completeSignIn(name: String, email: String, userID: String, method: String) {
         currentUserName = name
         activeUserEmail = email
+        activeUserID = userID
         isAuthenticated = true
         Task {
             let signInTime = Date.now.formatted(date: .omitted, time: .shortened)
@@ -213,6 +220,7 @@ struct SignUpScreen: View {
     @State private var alertTitle = ""
     @State private var alertMessage = ""
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("activeUserID") private var activeUserID = ""
     @State private var isShowingAlert = false
 
     var body: some View {
@@ -296,6 +304,7 @@ struct SignUpScreen: View {
 
             currentUserName = result.user.displayName
             activeUserEmail = result.user.email
+            activeUserID = result.user.id
             isAuthenticated = true
             await NotificationManager.shared.scheduleSignInNotification(
                 body: "Your account is ready. Start by adding your first transaction."
@@ -318,6 +327,7 @@ struct FaceIDScreen: View {
     @Binding var currentUserName: String
     let viewContext: NSManagedObjectContext
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("activeUserID") private var activeUserID = ""
     @State private var statusMessage = "Use Face ID or your device passcode to unlock FinTrack."
     @State private var isAuthenticating = false
 
@@ -397,6 +407,7 @@ struct FaceIDScreen: View {
 
                 currentUserName = user.displayName
                 activeUserEmail = user.email
+                activeUserID = user.id
                 isAuthenticated = true
                 isAuthenticating = false
                 let signInTime = Date.now.formatted(date: .omitted, time: .shortened)

@@ -112,6 +112,7 @@ struct TransactionsScreen: View {
                 }
             }
             .navigationTitle("Transactions")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $isShowingExpense) {
                 AddTransactionScreen(kind: .expense)
             }
@@ -146,8 +147,7 @@ struct AddTransactionScreen: View {
             Form {
                 Section("Details") {
                     TextField("Title", text: $title)
-                    TextField("Amount", text: $amount)
-                        .keyboardType(.decimalPad)
+                    AmountTextField(title: "Amount", text: $amount)
                     CategoryPicker(category: $category)
                     TextField("Notes", text: $notes, axis: .vertical)
                 }
@@ -260,6 +260,7 @@ struct EditTransactionScreen: View {
     @State private var category: String
     @State private var isExpense: Bool
     @State private var isShowingValidationAlert = false
+    @State private var isShowingDeleteConfirmation = false
 
     init(transaction: NSManagedObject, userEmail: String) {
         self.transaction = transaction
@@ -282,13 +283,14 @@ struct EditTransactionScreen: View {
                 .pickerStyle(.segmented)
 
                 TextField("Title", text: $title)
-                TextField("Amount", text: $amount)
-                    .keyboardType(.decimalPad)
+                AmountTextField(title: "Amount", text: $amount)
                 CategoryPicker(category: $category)
             }
 
             Section {
-                Button("Delete Transaction", role: .destructive, action: deleteTransaction)
+                Button("Delete Transaction", role: .destructive) {
+                    isShowingDeleteConfirmation = true
+                }
             }
         }
         .navigationTitle("Edit Transaction")
@@ -300,6 +302,12 @@ struct EditTransactionScreen: View {
         }
         .alert("Enter a title and a valid amount.", isPresented: $isShowingValidationAlert) {
             Button("OK", role: .cancel) { }
+        }
+        .alert("Delete this transaction?", isPresented: $isShowingDeleteConfirmation) {
+            Button("Delete", role: .destructive, action: deleteTransaction)
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This transaction will be removed from this device and Supabase.")
         }
     }
 
@@ -321,6 +329,15 @@ struct EditTransactionScreen: View {
                 userEmail: userEmail
             )
             try viewContext.save()
+            updateLinkedRecurringTransaction(
+                title: trimmedTitle,
+                amount: enteredAmount,
+                category: category,
+                isExpense: isExpense
+            )
+            Task {
+                await FinancialCloudSyncService.shared.synchronize()
+            }
             scheduleGoalNotifications(for: newlyAchievedGoals)
             dismiss()
         } catch {
@@ -330,16 +347,85 @@ struct EditTransactionScreen: View {
     }
 
     private func deleteTransaction() {
+        FinancialCloudSyncService.shared.prepareForDeletion(transaction)
+        deleteLinkedRecurringTransaction()
         viewContext.delete(transaction)
 
         do {
             _ = markNewlyAchievedGoals(in: viewContext, userEmail: userEmail)
             try viewContext.save()
+            Task {
+                await FinancialCloudSyncService.shared.synchronize()
+            }
             dismiss()
         } catch {
             viewContext.rollback()
             isShowingValidationAlert = true
         }
+    }
+
+    private func updateLinkedRecurringTransaction(
+        title: String,
+        amount: Double,
+        category: String,
+        isExpense: Bool
+    ) {
+        guard
+            let recurringID = transaction.value(forKey: "recurringID") as? String,
+            let recurringUUID = UUID(uuidString: recurringID)
+        else {
+            return
+        }
+
+        var schedules = RecurringTransactionStore.load(
+            from: UserDefaults.standard.string(forKey: "recurringTransactions") ?? ""
+        )
+        guard let index = schedules.firstIndex(where: {
+            $0.id == recurringUUID && $0.userEmail == userEmail
+        }) else {
+            return
+        }
+
+        let existing = schedules[index]
+        schedules[index] = RecurringTransactionData(
+            id: existing.id,
+            userEmail: existing.userEmail,
+            name: title,
+            category: category,
+            amount: amount,
+            cadence: existing.cadence,
+            isExpense: isExpense,
+            createdAt: existing.createdAt
+        )
+        UserDefaults.standard.set(
+            RecurringTransactionStore.encode(schedules),
+            forKey: "recurringTransactions"
+        )
+    }
+
+    private func deleteLinkedRecurringTransaction() {
+        guard
+            let recurringID = transaction.value(forKey: "recurringID") as? String,
+            let recurringUUID = UUID(uuidString: recurringID)
+        else {
+            return
+        }
+
+        var schedules = RecurringTransactionStore.load(
+            from: UserDefaults.standard.string(forKey: "recurringTransactions") ?? ""
+        )
+        guard let linkedSchedule = schedules.first(where: {
+            $0.id == recurringUUID && $0.userEmail == userEmail
+        }) else {
+            return
+        }
+
+        FinancialCloudSyncService.shared.prepareForRecurringDeletion(linkedSchedule)
+        schedules.removeAll { $0.id == recurringUUID && $0.userEmail == userEmail }
+        UserDefaults.standard.set(
+            RecurringTransactionStore.encode(schedules),
+            forKey: "recurringTransactions"
+        )
     }
 
     private func scheduleGoalNotifications(for goalTitles: [String]) {
@@ -357,9 +443,11 @@ struct EditTransactionScreen: View {
 
 
 struct RecurringTransactionsScreen: View {
+    @Environment(\.managedObjectContext) private var viewContext
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
     @AppStorage("recurringTransactions") private var encodedRecurringTransactions = ""
     @State private var isShowingAddRecurring = false
+    @State private var recurringTransactionPendingDeletion: RecurringTransactionData?
 
     private var recurringTransactions: [RecurringTransactionData] {
         RecurringTransactionStore.load(from: encodedRecurringTransactions).filter {
@@ -384,6 +472,11 @@ struct RecurringTransactionsScreen: View {
                         icon: "repeat.circle.fill",
                         tint: transaction.isExpense ? .orange : .green
                     )
+                    .swipeActions {
+                        Button("Delete", role: .destructive) {
+                            recurringTransactionPendingDeletion = transaction
+                        }
+                    }
                 }
             }
         }
@@ -399,6 +492,54 @@ struct RecurringTransactionsScreen: View {
         }
         .sheet(isPresented: $isShowingAddRecurring) {
             AddRecurringTransactionScreen()
+        }
+        .alert(
+            "Delete this recurring transaction?",
+            isPresented: Binding(
+                get: { recurringTransactionPendingDeletion != nil },
+                set: { if $0 == false { recurringTransactionPendingDeletion = nil } }
+            )
+        ) {
+            Button("Delete", role: .destructive) {
+                if let recurringTransactionPendingDeletion {
+                    deleteRecurringTransaction(recurringTransactionPendingDeletion)
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Future recurrences will stop. Existing transactions will remain.")
+        }
+    }
+
+    private func deleteRecurringTransaction(_ recurring: RecurringTransactionData) {
+        FinancialCloudSyncService.shared.prepareForRecurringDeletion(recurring)
+
+        let linkedTransactions = NSFetchRequest<NSManagedObject>(entityName: "Transaction")
+        linkedTransactions.predicate = NSPredicate(
+            format: "userEmail == %@ AND recurringID == %@",
+            activeUserEmail,
+            recurring.id.uuidString
+        )
+
+        for transaction in (try? viewContext.fetch(linkedTransactions)) ?? [] {
+            FinancialCloudSyncService.shared.prepareForDeletion(transaction)
+            viewContext.delete(transaction)
+        }
+
+        var schedules = RecurringTransactionStore.load(from: encodedRecurringTransactions)
+        schedules.removeAll { $0.id == recurring.id && $0.userEmail == activeUserEmail }
+        encodedRecurringTransactions = RecurringTransactionStore.encode(schedules)
+        recurringTransactionPendingDeletion = nil
+
+        do {
+            if viewContext.hasChanges {
+                try viewContext.save()
+            }
+            Task {
+                await FinancialCloudSyncService.shared.synchronize()
+            }
+        } catch {
+            viewContext.rollback()
         }
     }
 }
@@ -421,8 +562,7 @@ struct AddRecurringTransactionScreen: View {
                 Section("Recurring Transaction") {
                     Toggle("Expense", isOn: $isExpense)
                     TextField("Name", text: $name)
-                    TextField("Amount", text: $amount)
-                        .keyboardType(.decimalPad)
+                    AmountTextField(title: "Amount", text: $amount)
                     CategoryPicker(category: $category)
                     Picker("Repeats", selection: $cadence) {
                         Text("Weekly").tag("Weekly")
@@ -456,6 +596,7 @@ struct AddRecurringTransactionScreen: View {
             return
         }
 
+        let recurringID = UUID()
         let transaction = NSEntityDescription.insertNewObject(
             forEntityName: "Transaction",
             into: viewContext
@@ -465,6 +606,7 @@ struct AddRecurringTransactionScreen: View {
         transaction.setValue(isExpense ? -enteredAmount : enteredAmount, forKey: "amount")
         transaction.setValue(Date(), forKey: "createdAt")
         transaction.setValue(activeUserEmail, forKey: "userEmail")
+        transaction.setValue(recurringID.uuidString, forKey: "recurringID")
 
         do {
             let newlyAchievedGoals = markNewlyAchievedGoals(
@@ -478,7 +620,7 @@ struct AddRecurringTransactionScreen: View {
             )
             savedRecurringTransactions.append(
                 RecurringTransactionData(
-                    id: UUID(),
+                    id: recurringID,
                     userEmail: activeUserEmail,
                     name: trimmedName,
                     category: category,
@@ -491,6 +633,7 @@ struct AddRecurringTransactionScreen: View {
             encodedRecurringTransactions = RecurringTransactionStore.encode(savedRecurringTransactions)
 
             Task {
+                await FinancialCloudSyncService.shared.synchronize()
                 await NotificationManager.shared.scheduleRecurringReminder(
                     name: trimmedName,
                     cadence: cadence
@@ -739,8 +882,7 @@ struct ReceiptConfirmationScreen: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 TextField("Merchant", text: $merchant)
-                    TextField("Total", text: $total)
-                        .keyboardType(.decimalPad)
+                    AmountTextField(title: "Total", text: $total)
                     CategoryPicker(category: $category)
                     Text(scan.date, format: .dateTime.month().day().year())
                     Text("\(scan.itemCount) text lines identified by Vision")

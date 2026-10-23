@@ -1,5 +1,35 @@
 import SwiftUI
 
+struct AmountTextField: View {
+    let title: LocalizedStringKey
+    @Binding var text: String
+
+    var body: some View {
+        TextField(title, text: Binding(
+            get: { text },
+            set: { text = Self.numericAmount(from: $0) }
+        ))
+        .keyboardType(.decimalPad)
+    }
+
+    private static func numericAmount(from value: String) -> String {
+        var containsDecimalSeparator = false
+
+        return String(value.compactMap { character in
+            if character.isWholeNumber {
+                return character
+            }
+
+            if character == "." && containsDecimalSeparator == false {
+                containsDecimalSeparator = true
+                return character
+            }
+
+            return nil
+        })
+    }
+}
+
 struct CurrencyText: View {
     let amount: Double
     @AppStorage("currencyCode") private var currencyCode = "LKR"
@@ -16,13 +46,13 @@ struct AuthHeader: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Image(systemName: systemImage)
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(.white)
+            Image("FinTrackLogo")
+                .resizable()
+                .scaledToFit()
                 .frame(width: 74, height: 74)
-                .background(LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .shadow(color: .blue.opacity(0.25), radius: 18, x: 0, y: 10)
+                .accessibilityLabel("FinTrack")
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
@@ -61,14 +91,30 @@ struct AuthTextField: View {
 struct AuthSecureField: View {
     let title: LocalizedStringKey
     @Binding var text: String
+    @State private var isPasswordVisible = false
 
     var body: some View {
-        Label {
-            SecureField(title, text: $text)
-        } icon: {
+        HStack(spacing: 10) {
             Image(systemName: "lock")
                 .foregroundStyle(.blue)
                 .frame(width: 24)
+
+            Group {
+                if isPasswordVisible {
+                    TextField(title, text: $text)
+                } else {
+                    SecureField(title, text: $text)
+                }
+            }
+
+            Button {
+                isPasswordVisible.toggle()
+            } label: {
+                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
         }
         .padding(14)
         .background(Color(.secondarySystemGroupedBackground))

@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		697F3FAC308A835C000CC24A /* SupabaseFinancialRecords.sql in Resources */ = {isa = PBXBuildFile; fileRef = 697F3FAB308A835C000CC24A /* SupabaseFinancialRecords.sql */; };
+		697F3FAE308B2781000CC24A /* FinancialCloudSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 697F3FAD308B2781000CC24A /* FinancialCloudSyncService.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -31,7 +31,7 @@
 		69381AAE3079F92A00F837C9 /* FinTrack.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FinTrack.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		69381AC03079F92C00F837C9 /* FinTrackTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FinTrackTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		69381ACA3079F92C00F837C9 /* FinTrackUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FinTrackUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		697F3FAB308A835C000CC24A /* SupabaseFinancialRecords.sql */ = {isa = PBXFileReference; lastKnownFileType = text; path = SupabaseFinancialRecords.sql; sourceTree = "<group>"; };
+		697F3FAD308B2781000CC24A /* FinancialCloudSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinancialCloudSyncService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -77,7 +77,7 @@
 				69381AB03079F92A00F837C9 /* FinTrack */,
 				69381AC33079F92C00F837C9 /* FinTrackTests */,
 				69381ACD3079F92C00F837C9 /* FinTrackUITests */,
-				697F3FAB308A835C000CC24A /* SupabaseFinancialRecords.sql */,
+				697F3FAD308B2781000CC24A /* FinancialCloudSyncService.swift */,
 				69381AAF3079F92A00F837C9 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -203,7 +203,6 @@
 		69381AAC3079F92A00F837C9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
-				697F3FAC308A835C000CC24A /* SupabaseFinancialRecords.sql in Resources */,
 			);
 		};
 		69381ABE3079F92C00F837C9 /* Resources */ = {
@@ -222,6 +221,7 @@
 		69381AAA3079F92A00F837C9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			files = (
+				697F3FAE308B2781000CC24A /* FinancialCloudSyncService.swift in Sources */,
 			);
 		};
 		69381ABC3079F92C00F837C9 /* Sources */ = {

@@ -19,23 +19,14 @@ struct AppShell: View {
             GoalsScreen()
                 .tabItem { Label("Goals", systemImage: "target") }
 
-            AnalyticsScreen()
-                .tabItem { Label("Insights", systemImage: "sparkles") }
-
-            FinancialNewsScreen()
-                .tabItem { Label("News", systemImage: "newspaper.fill") }
-
-            ProfileScreen(
-                userName: userName,
-                isAuthenticated: $isAuthenticated,
-                authRoute: $authRoute
-            )
-            .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
-
             NavigationStack {
-                SettingsScreen()
+                MoreScreen(
+                    userName: userName,
+                    isAuthenticated: $isAuthenticated,
+                    authRoute: $authRoute
+                )
             }
-            .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+            .tabItem { Label("More", systemImage: "ellipsis") }
         }
     }
 }

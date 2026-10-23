@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var isAuthenticated = false
     @State private var currentUserName = ""
     @AppStorage("activeUserEmail") private var activeUserEmail = ""
+    @AppStorage("activeUserID") private var activeUserID = ""
     @AppStorage("faceIDEnabled") private var faceIDEnabled = true
 
     var body: some View {
@@ -39,6 +40,17 @@ struct ContentView: View {
 
             if SupabaseAuthService.shared.hasSavedSession {
                 authRoute = faceIDEnabled ? .faceID : .login
+            }
+        }
+        .task(id: isAuthenticated) {
+            if isAuthenticated {
+                FinancialCloudSyncService.shared.start(
+                    context: viewContext,
+                    userID: activeUserID,
+                    userEmail: activeUserEmail
+                )
+            } else {
+                FinancialCloudSyncService.shared.stop()
             }
         }
 

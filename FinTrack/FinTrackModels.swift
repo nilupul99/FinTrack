@@ -31,13 +31,13 @@ func markNewlyAchievedGoals(
 
     return goals.compactMap { goal in
         let category = goal.value(forKey: "category") as? String ?? ""
-        let balance = transactions
+        let categoryTotal = transactions
             .filter { $0.value(forKey: "category") as? String == category }
-            .reduce(0) { $0 + ($1.value(forKey: "amount") as? Double ?? 0) }
+            .reduce(0) { $0 + abs($1.value(forKey: "amount") as? Double ?? 0) }
         let target = goal.value(forKey: "target") as? Double ?? 0
         let isAchieved = goal.value(forKey: "isAchieved") as? Bool ?? false
 
-        guard balance >= target, target > 0 else {
+        guard categoryTotal >= target, target > 0 else {
             if isAchieved {
                 goal.setValue(false, forKey: "isAchieved")
             }

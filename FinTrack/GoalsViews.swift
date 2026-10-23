@@ -32,8 +32,16 @@ struct GoalsScreen: View {
                 return total
             }
 
-            return total + (transaction.value(forKey: "amount") as? Double ?? 0)
+            // Goals measure activity in their category, so both an income and
+            // an expense contribute by their absolute transaction value.
+            return total + abs(transaction.value(forKey: "amount") as? Double ?? 0)
         }
+    }
+
+    private func isGoalAchieved(_ goal: NSManagedObject) -> Bool {
+        let category = goal.value(forKey: "category") as? String ?? ""
+        let target = goal.value(forKey: "target") as? Double ?? 0
+        return target > 0 && savedAmount(for: category) >= target
     }
 
     var body: some View {
@@ -57,7 +65,7 @@ struct GoalsScreen: View {
                                     category: goal.value(forKey: "category") as? String ?? "Other",
                                     saved: max(savedAmount(for: goal.value(forKey: "category") as? String ?? ""), 0),
                                     target: goal.value(forKey: "target") as? Double ?? 0,
-                                    isAchieved: goal.value(forKey: "isAchieved") as? Bool ?? false
+                                    isAchieved: isGoalAchieved(goal)
                                 )
                             }
                             .buttonStyle(.plain)
@@ -68,6 +76,7 @@ struct GoalsScreen: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Goals")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -132,6 +141,15 @@ struct GoalCard: View {
                 }
             }
 
+            HStack {
+                Text("Completed")
+                Spacer()
+                Text(progress, format: .percent.precision(.fractionLength(0)))
+                    .fontWeight(.semibold)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+
             ProgressView(value: progress)
                 .tint(isAchieved ? .green : .blue)
 
@@ -163,8 +181,7 @@ struct AddGoalScreen: View {
                 Section("Goal") {
                     TextField("Title", text: $title)
                     CategoryPicker(category: $category)
-                    TextField("Target Amount", text: $target)
-                        .keyboardType(.decimalPad)
+                    AmountTextField(title: "Target Amount", text: $target)
                 }
 
                 Section {
@@ -211,7 +228,20 @@ struct AddGoalScreen: View {
         goal.setValue(userEmail, forKey: "userEmail")
 
         do {
+            let newlyAchievedGoals = markNewlyAchievedGoals(
+                in: viewContext,
+                userEmail: userEmail
+            )
             try viewContext.save()
+            Task {
+                for goalTitle in newlyAchievedGoals {
+                    await NotificationManager.shared.scheduleNotification(
+                        title: "Goal achieved",
+                        body: "You achieved your \(goalTitle) goal.",
+                        secondsFromNow: 1
+                    )
+                }
+            }
             dismiss()
         } catch {
             viewContext.rollback()
@@ -242,8 +272,7 @@ struct EditGoalScreen: View {
             Section("Goal") {
                 TextField("Title", text: $title)
                 CategoryPicker(category: $category)
-                TextField("Target Amount", text: $target)
-                    .keyboardType(.decimalPad)
+                AmountTextField(title: "Target Amount", text: $target)
             }
 
             Section {

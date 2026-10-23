@@ -1,2 +1,0 @@
--- Financial-record Supabase sync has been reverted.
--- This file is intentionally inactive and is retained only because it remains referenced by the Xcode project.

@@ -7,10 +7,12 @@ struct SignUpResult: Sendable {
 }
 
 struct AuthenticatedUser: Decodable, Sendable {
+    let id: String
     let email: String
     private let name: String?
 
     enum CodingKeys: String, CodingKey {
+        case id
         case email
         case userMetadata = "user_metadata"
     }
@@ -21,6 +23,7 @@ struct AuthenticatedUser: Decodable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
         email = try container.decode(String.self, forKey: .email)
 
         if let metadata = try? container.nestedContainer(
@@ -58,13 +61,17 @@ enum SupabaseAuthError: LocalizedError {
 struct SupabaseAuthService {
     static let shared = SupabaseAuthService()
 
-    private let baseURL = URL(string: "https://lgspwlcdhugqvuchgmyx.supabase.co")!
-    private let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxn" +
+    let baseURL = URL(string: "https://lgspwlcdhugqvuchgmyx.supabase.co")!
+    let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxn" +
         "c3B3bGNkaHVncXZ1Y2hnbXl4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI2NzM1MzMsImV4cCI6MjEwODI0OTUzM30." +
         "w29yTsSB4Q5V65VHUZ118I46s2gkcXqlqaAe0Se4x70"
 
     var hasSavedSession: Bool {
         SecureSessionStore.load() != nil
+    }
+
+    var currentAccessToken: String? {
+        SecureSessionStore.load()?.accessToken
     }
 
     func signUp(name: String, email: String, password: String) async throws -> SignUpResult {

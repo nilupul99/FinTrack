@@ -93,29 +93,27 @@ struct FinancialNewsScreen: View {
     @State private var model = FinancialNewsModel()
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if model.isLoading && model.articles.isEmpty {
-                    ProgressView("Loading world financial news…")
-                } else if let errorMessage = model.errorMessage, model.articles.isEmpty {
-                    FinancialNewsErrorView(message: errorMessage) {
+        Group {
+            if model.isLoading && model.articles.isEmpty {
+                ProgressView("Loading world financial news…")
+            } else if let errorMessage = model.errorMessage, model.articles.isEmpty {
+                FinancialNewsErrorView(message: errorMessage) {
+                    await model.load()
+                }
+            } else {
+                FinancialNewsList(
+                    articles: model.articles,
+                    isRefreshing: model.isLoading,
+                    refresh: {
                         await model.load()
                     }
-                } else {
-                    FinancialNewsList(
-                        articles: model.articles,
-                        isRefreshing: model.isLoading,
-                        refresh: {
-                            await model.load()
-                        }
-                    )
-                }
+                )
             }
-            .navigationTitle("Financial News")
-            .navigationBarTitleDisplayMode(.inline)
-            .task {
-                await model.load()
-            }
+        }
+        .navigationTitle("Financial News")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await model.load()
         }
     }
 }

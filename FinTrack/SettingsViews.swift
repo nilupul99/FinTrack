@@ -26,11 +26,11 @@ struct SettingsScreen: View {
                 currencyCode: $currencyCode,
                 currencies: currencies
             )
+            CloudSyncSettingsSection()
 //            APIInsightsSettingsSection(insightsAPIURL: $insightsAPIURL)
         }
         .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -42,6 +42,24 @@ struct SecuritySettingsSection: View {
         Section("Security") {
             Toggle("Face ID", isOn: $faceIDEnabled)
             Toggle("Receipt scanning", isOn: $receiptScanningEnabled)
+        }
+    }
+}
+
+struct CloudSyncSettingsSection: View {
+    @AppStorage("financialSyncStatus") private var syncStatus = "Waiting to sync"
+
+    var body: some View {
+        Section("Cloud Sync") {
+            Text(syncStatus)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Button("Sync Now") {
+                Task {
+                    await FinancialCloudSyncService.shared.synchronize()
+                }
+            }
         }
     }
 }

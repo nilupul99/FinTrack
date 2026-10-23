@@ -33,11 +33,12 @@ struct HomeScreen: View {
                     SpendingSummaryCard(spent: spent)
                     RecentTransactionsSection(transactions: transactions.map(TransactionRowData.init(managedObject:)))
                 }
-                .padding(20)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("Home")
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

@@ -58,6 +58,7 @@ struct BudgetScreen: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Budget")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -156,8 +157,7 @@ struct CreateBudgetScreen: View {
             Form {
                 Section("Category Budget") {
                     CategoryPicker(category: $category)
-                    TextField("Budget Amount", text: $amount)
-                        .keyboardType(.decimalPad)
+                    AmountTextField(title: "Budget Amount", text: $amount)
                 }
             }
             .navigationTitle("Create Budget")
@@ -231,8 +231,7 @@ struct EditBudgetScreen: View {
         Form {
             Section("Category Budget") {
                 CategoryPicker(category: $category)
-                TextField("Budget Amount", text: $amount)
-                    .keyboardType(.decimalPad)
+                AmountTextField(title: "Budget Amount", text: $amount)
             }
 
             Section {

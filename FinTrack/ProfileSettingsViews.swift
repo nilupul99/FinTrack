@@ -6,26 +6,67 @@ struct ProfileScreen: View {
     @Binding var authRoute: AuthRoute
 
     var body: some View {
-        NavigationStack {
-            List {
-                ProfileHeaderSection(userName: userName)
+        List {
+            ProfileHeaderSection(userName: userName)
 
-                Section {
-                    Button(role: .destructive) {
-                        isAuthenticated = false
-                        authRoute = .login
-                        Task {
-                            await SupabaseAuthService.shared.signOut()
-                            await NotificationManager.shared.scheduleSignOutNotification()
-                        }
-                    } label: {
-                        Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+            Section {
+                Button(role: .destructive) {
+                    isAuthenticated = false
+                    authRoute = .login
+                    Task {
+                        await SupabaseAuthService.shared.signOut()
+                        await NotificationManager.shared.scheduleSignOutNotification()
                     }
+                } label: {
+                    Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             }
-            .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
         }
+        .navigationTitle("Profile")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct MoreScreen: View {
+    let userName: String
+    @Binding var isAuthenticated: Bool
+    @Binding var authRoute: AuthRoute
+
+    var body: some View {
+        List {
+            Section("Explore") {
+                NavigationLink {
+                    AnalyticsScreen()
+                } label: {
+                    Label("Insights", systemImage: "sparkles")
+                }
+
+                NavigationLink {
+                    FinancialNewsScreen()
+                } label: {
+                    Label("Financial News", systemImage: "newspaper.fill")
+                }
+            }
+
+            Section("Account") {
+                NavigationLink {
+                    ProfileScreen(
+                        userName: userName,
+                        isAuthenticated: $isAuthenticated,
+                        authRoute: $authRoute
+                    )
+                } label: {
+                    Label("Profile", systemImage: "person.crop.circle.fill")
+                }
+
+                NavigationLink {
+                    SettingsScreen()
+                } label: {
+                    Label("Settings", systemImage: "gearshape.fill")
+                }
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
